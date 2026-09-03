@@ -347,16 +347,29 @@ export function Section3Metas({ financial }: Props) {
     parte: string;
   }
 
-  /* Linhas e total do painel numa varredura só: o total era um segundo percurso
-     sobre a base inteira para somar exatamente as mesmas linhas. */
+  /*
+   * Teto de linhas do painel. Eram 30, e numa coluna agrupada isso escondia a
+   * natureza menor: se a maior tem trinta lançamentos grandes, ela toma a lista
+   * inteira e a outra some — mesmo estando somada no total. O painel rola, então
+   * o custo de um teto alto é rolagem, não confusão.
+   */
+  const MAX_LINHAS = 100;
+
+  /* Linhas, total e subtotal por natureza numa varredura só: o total era um
+     segundo percurso sobre a base inteira para somar exatamente as mesmas linhas. */
   const rankingBruto = useMemo(() => {
-    if (!chavesDoHover) return { linhas: [] as LinhaRanking[], total: 0 };
+    if (!chavesDoHover)
+      return { linhas: [] as LinhaRanking[], total: 0, porParte: [] as [string, number][] };
     const map = new Map<string, LinhaRanking>();
+    const somaPorParte = new Map<string, { nome: string; soma: number }>();
     let total = 0;
     for (const r of filtered) {
       const chave = norm(r.meta);
       if (!chavesDoHover.has(chave)) continue;
       total += r.debito1;
+      const acc = somaPorParte.get(chave);
+      if (acc) acc.soma += r.debito1;
+      else somaPorParte.set(chave, { nome: r.meta, soma: r.debito1 });
       const razao = r.razaoSocial || "—";
       const nat4 = r.nat4 || "—";
       const projeto = r.projeto || "<SEM PROJETO>";
@@ -370,8 +383,13 @@ export function Section3Metas({ financial }: Props) {
     return {
       linhas: Array.from(map.values())
         .sort((a, b) => b.soma - a.soma)
-        .slice(0, 30),
+        .slice(0, MAX_LINHAS),
       total,
+      /* Quanto cada natureza do grupo pesa. Fica no cabeçalho para responder
+         "isto inclui a outra coluna?" sem depender de ela caber na lista. */
+      porParte: Array.from(somaPorParte.values())
+        .sort((a, b) => b.soma - a.soma)
+        .map((p) => [p.nome, p.soma] as [string, number]),
     };
   }, [chavesDoHover, filtered]);
 
@@ -493,6 +511,28 @@ export function Section3Metas({ financial }: Props) {
                   Despesa total = {fmtBRL(rankingTotal)}
                 </p>
               </div>
+
+              {/*
+               * Subtotal por natureza, só nas colunas agrupadas. A lista abaixo é
+               * um ranking: se uma das naturezas tem os maiores lançamentos, ela
+               * ocupa as primeiras linhas e a outra pode nem aparecer na tela.
+               * Esta faixa mostra o peso de cada uma independente disso.
+               */}
+              {mostraIdentificacao && rankingBruto.porParte.length > 1 && (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-line-soft bg-panel-2 px-4 py-1.5">
+                  {rankingBruto.porParte.map(([nome, soma]) => (
+                    <span key={nome} className="flex items-center gap-1.5 whitespace-nowrap">
+                      <span
+                        className="inline-block h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: corPorParte.get(norm(nome)) ?? ORANGE }}
+                      />
+                      <span className="text-ink-2">{nome}</span>
+                      <span className="font-medium tabular-nums text-ink">{fmtBRL(soma)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
               <div className="max-h-[180px] overflow-y-auto">
                 <table className="w-full">
                   <thead className="sticky top-0 bg-panel z-10">
