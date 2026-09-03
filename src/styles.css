@@ -1,0 +1,250 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Design system definition — tema noturno executivo.
+ *
+ * O app é dark-only: :root JÁ é o tema escuro, e .dark repete os mesmos
+ * valores para que qualquer componente shadcn que dependa da classe continue
+ * funcionando. Não existe paleta clara.
+ *
+ * A paleta vem do protótipo "Entradas Dízimos e Ofertas" (hex de origem
+ * anotado ao lado de cada token) convertida para oklch.
+ *
+ * O @theme inline mapeia as custom properties para utilitários Tailwind
+ * (ex.: --color-panel -> bg-panel, text-panel, border-panel).
+ *
+ * Para adicionar uma cor semântica:
+ * 1. Defina a variável em :root e em .dark
+ * 2. Registre em @theme inline como --color-<nome>: var(--<nome>)
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Tokens do dashboard (paleta do protótipo) */
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-plot: var(--plot);
+  --color-line-soft: var(--line-soft);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-acc: var(--acc);
+  --color-meta: var(--meta);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+  --color-th: var(--th);
+  --color-row-hover: var(--row-hover);
+  --color-void: var(--void);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  /* --- paleta base do protótipo --- */
+  --panel: oklch(0.2341 0.019 262.12); /* #191E27 */
+  --panel-2: oklch(0.2723 0.024 264.05); /* #212733 */
+  --plot: oklch(0.2753 0.0165 259.78); /* #232830 */
+  --line-soft: oklch(0.3117 0.0237 261.17); /* #2A313D */
+  --line-strong: oklch(0.3762 0.0253 257.52); /* #39424F */
+  --ink: oklch(0.9413 0.0109 256.7); /* #E7ECF3 */
+  --ink-2: oklch(0.7593 0.0266 255.59); /* #A6B2C2 */
+  --ink-3: oklch(0.6165 0.0307 258.37); /* #7A8698 */
+  --acc: oklch(0.7018 0.1554 264.15); /* #6D9BFF */
+  --meta: oklch(0.6902 0.1993 25.55); /* #FF5C57 */
+  --pos: oklch(0.7684 0.1415 160.45); /* #4FCF95 */
+  --neg: oklch(0.7327 0.164 26.23); /* #FF7A70 */
+  --th: oklch(0.2599 0.0243 264.01); /* #1E2430 */
+  --row-hover: oklch(0.2765 0.0279 263.96); /* #212836 */
+  --void: oklch(0.2213 0.0192 262.09); /* #161B24 */
+
+  /* --- tokens shadcn mapeados na paleta acima --- */
+  --background: oklch(0.1869 0.0151 266.77); /* #10131A */
+  --foreground: var(--ink);
+  --card: var(--panel);
+  --card-foreground: var(--ink);
+  --popover: var(--panel-2);
+  --popover-foreground: var(--ink);
+  --primary: var(--acc);
+  --primary-foreground: oklch(0.1869 0.0151 266.77);
+  --secondary: var(--panel-2);
+  --secondary-foreground: var(--ink);
+  --muted: var(--panel-2);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--panel-2);
+  --accent-foreground: var(--ink);
+  --destructive: var(--meta);
+  --destructive-foreground: oklch(0.1869 0.0151 266.77);
+  --border: var(--line-soft);
+  --input: var(--line-strong);
+  --ring: var(--acc);
+  --chart-1: var(--acc);
+  --chart-2: oklch(0.7684 0.1415 160.45);
+  --chart-3: oklch(0.8 0.13 85);
+  --chart-4: oklch(0.72 0.15 330);
+  --chart-5: oklch(0.75 0.12 200);
+  --sidebar: var(--panel);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--acc);
+  --sidebar-primary-foreground: oklch(0.1869 0.0151 266.77);
+  --sidebar-accent: var(--panel-2);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line-soft);
+  --sidebar-ring: var(--acc);
+}
+
+/*
+ * A classe .dark repete :root. O app não tem tema claro; isto existe só para
+ * que componentes shadcn que usem o seletor dark: continuem coerentes.
+ */
+.dark {
+  --panel: oklch(0.2341 0.019 262.12);
+  --panel-2: oklch(0.2723 0.024 264.05);
+  --plot: oklch(0.2753 0.0165 259.78);
+  --line-soft: oklch(0.3117 0.0237 261.17);
+  --line-strong: oklch(0.3762 0.0253 257.52);
+  --ink: oklch(0.9413 0.0109 256.7);
+  --ink-2: oklch(0.7593 0.0266 255.59);
+  --ink-3: oklch(0.6165 0.0307 258.37);
+  --acc: oklch(0.7018 0.1554 264.15);
+  --meta: oklch(0.6902 0.1993 25.55);
+  --pos: oklch(0.7684 0.1415 160.45);
+  --neg: oklch(0.7327 0.164 26.23);
+  --th: oklch(0.2599 0.0243 264.01);
+  --row-hover: oklch(0.2765 0.0279 263.96);
+  --void: oklch(0.2213 0.0192 262.09);
+
+  --background: oklch(0.1869 0.0151 266.77);
+  --foreground: var(--ink);
+  --card: var(--panel);
+  --card-foreground: var(--ink);
+  --popover: var(--panel-2);
+  --popover-foreground: var(--ink);
+  --primary: var(--acc);
+  --primary-foreground: oklch(0.1869 0.0151 266.77);
+  --secondary: var(--panel-2);
+  --secondary-foreground: var(--ink);
+  --muted: var(--panel-2);
+  --muted-foreground: var(--ink-2);
+  --accent: var(--panel-2);
+  --accent-foreground: var(--ink);
+  --destructive: var(--meta);
+  --destructive-foreground: oklch(0.1869 0.0151 266.77);
+  --border: var(--line-soft);
+  --input: var(--line-strong);
+  --ring: var(--acc);
+  --sidebar: var(--panel);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--acc);
+  --sidebar-primary-foreground: oklch(0.1869 0.0151 266.77);
+  --sidebar-accent: var(--panel-2);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--line-soft);
+  --sidebar-ring: var(--acc);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+/*
+ * Sombras do protótipo. Sombra escura sobre fundo escuro quase não aparece —
+ * o que separa os cartões do fundo é a borda; a sombra só dá profundidade.
+ */
+@utility shadow-panel {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.28),
+    0 1px 3px rgba(0, 0, 0, 0.22);
+}
+
+@utility shadow-panel-lg {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.48);
+}
+
+@utility shadow-plot {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.3),
+    0 10px 28px rgba(0, 0, 0, 0.34);
+}
+
+/* Barras de rolagem no tom do tema — o padrão claro do Chrome destoa. */
+@layer base {
+  * {
+    scrollbar-color: var(--line-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+    border-radius: 6px;
+    border: 2px solid var(--background);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--ink-3);
+  }
+}

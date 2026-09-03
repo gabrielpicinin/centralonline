@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tanstack-start-app",
+  "compatibility_date": "2025-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "src/server.ts",
+
+  // NÃO declare SITE_USERNAME, SITE_PASSWORD ou SESSION_SECRET num bloco "vars"
+  // aqui. Vars são texto puro: ficam neste arquivo versionado e visíveis no
+  // painel da Cloudflare. Os três são secrets, definidos fora do repositório:
+  //
+  //   npx wrangler secret put SITE_USERNAME
+  //   npx wrangler secret put SITE_PASSWORD
+  //   npx wrangler secret put SESSION_SECRET
+  //
+  // Com nodejs_compat ligado, o Worker os entrega em process.env, que é onde
+  // src/lib/gate.functions.ts os lê. Localmente eles vêm do .env.
+}
