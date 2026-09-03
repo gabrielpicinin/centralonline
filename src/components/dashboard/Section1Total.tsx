@@ -143,7 +143,7 @@ function BotaoExpandir({ aberto, onClick }: { aberto: boolean; onClick: () => vo
 function Flutuante({
   caixa,
   animar,
-  frente,
+  camada,
   innerRef,
   onMouseEnter,
   onMouseLeave,
@@ -151,7 +151,8 @@ function Flutuante({
 }: {
   caixa: Caixa | null;
   animar: boolean;
-  frente: boolean;
+  /** Empilhamento. Ver `camadaDe`: quem se move fica acima de quem está parado. */
+  camada: number;
   innerRef?: React.RefObject<HTMLDivElement | null>;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -168,7 +169,7 @@ function Flutuante({
         left: caixa?.left ?? 0,
         width: caixa?.width ?? 0,
         height: caixa?.height ?? 0,
-        zIndex: frente ? 30 : 1,
+        zIndex: camada,
         opacity: caixa ? 1 : 0,
         transition: animar ? TRANSICAO_CAIXA : "none",
       }}
@@ -406,14 +407,36 @@ export function Section1Total({
     return () => ro.disconnect();
   }, []);
 
+  /*
+   * Qual painel ainda está em trânsito. Sem isso, o painel que recolhe perde a
+   * elevação no instante do clique — `expandido` já é nulo — e atravessa os
+   * 620ms de volta por baixo do vizinho, que está parado. Ele precisa continuar
+   * por cima até pousar.
+   */
+  const [emMovimento, setEmMovimento] = useState<PainelId | null>(null);
+  const timerMovimento = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const marcarMovimento = (id: PainelId | null) => {
+    if (timerMovimento.current) clearTimeout(timerMovimento.current);
+    setEmMovimento(id);
+    if (id) timerMovimento.current = setTimeout(() => setEmMovimento(null), DUR_ABRIR);
+  };
+
+  useEffect(() => () => void (timerMovimento.current && clearTimeout(timerMovimento.current)), []);
+
   const fechar = () => {
     setAnimar(true);
+    marcarMovimento(expandido); // quem está saindo segue elevado até pousar
     setExpandido(null);
   };
   const alternar = (id: PainelId) => {
     setAnimar(true);
+    marcarMovimento(id);
     setExpandido((v) => (v === id ? null : id));
   };
+
+  /** Aberto por cima de tudo; em trânsito acima do parado; parado no chão. */
+  const camadaDe = (id: PainelId) => (expandido === id ? 30 : emMovimento === id ? 25 : 1);
 
   // Esc fecha, como em qualquer coisa que abre por cima.
   useEffect(() => {
@@ -631,7 +654,7 @@ export function Section1Total({
         <Flutuante
           caixa={caixaDe("totais")}
           animar={animar}
-          frente={expandido === "totais"}
+          camada={camadaDe("totais")}
           innerRef={cardRef}
           onMouseEnter={cancelarSaida}
           onMouseLeave={agendarSaida}
@@ -692,7 +715,7 @@ export function Section1Total({
         </Flutuante>
 
         {/* Dízimos e Ofertas vs. Meta — mesma mecânica de expansão. */}
-        <Flutuante caixa={caixaDe("meta")} animar={animar} frente={expandido === "meta"}>
+        <Flutuante caixa={caixaDe("meta")} animar={animar} camada={camadaDe("meta")}>
           <Painel
             titulo="Dízimos e Ofertas vs. Meta"
             legenda="Dízimos e ofertas mensais vs. meta mensal"
