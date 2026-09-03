@@ -7,19 +7,19 @@ type GateSession = { unlocked?: boolean; user?: string };
 
 /*
  * As três variáveis nunca vivem no código nem no bundle — são lidas do ambiente
- * a cada requisição. Em desenvolvimento vêm do .env (que está no .gitignore);
- * publicado na Cloudflare, precisam ser *secrets* do Worker, não *vars*: vars
- * ficam legíveis no painel e no wrangler.jsonc. Ver README, "Segredos".
+ * a cada requisição. Localmente vêm do .env (que está no .gitignore); no site
+ * publicado, do ambiente configurado no projeto do Lovable, que é quem hospeda.
+ * Ver README, "Segredos".
  *
- * A mensagem diz o que fazer. Sem ela, um deploy sem os segredos configurados
- * devolve 500 em toda tela de login sem nenhuma pista do motivo.
+ * A mensagem diz onde procurar. Sem ela, um ambiente sem as variáveis devolve
+ * 500 em toda tela de login, sem nenhuma pista do motivo.
  */
 function exigir(nome: "SITE_USERNAME" | "SITE_PASSWORD" | "SESSION_SECRET"): string {
   const valor = process.env[nome];
   if (!valor) {
     console.error(
-      `[gate] ${nome} não está definida. Em desenvolvimento, preencha o .env; ` +
-        `publicado, rode: npx wrangler secret put ${nome}`,
+      `[gate] ${nome} não está definida. No seu computador, preencha o .env; ` +
+        `no site publicado, defina a variável no projeto do Lovable.`,
     );
     throw new Error("Internal server error");
   }

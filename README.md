@@ -51,53 +51,44 @@ Gere o `SESSION_SECRET` aleatoriamente, nunca à mão:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-**Em desenvolvimento** elas vêm do `.env`, que está no `.gitignore` e não deve
-ser versionado nunca.
+### Onde cada ambiente lê
 
-**Publicado na Cloudflare** elas precisam ser *secrets* do Worker — não *vars*.
-A diferença importa: vars ficam em texto puro no `wrangler.jsonc` e visíveis no
-painel; secrets são cifrados e não aparecem em lugar nenhum depois de definidos.
-Cada comando pede o valor de forma interativa:
+**No seu computador** elas vêm do arquivo `.env` na raiz. Ele está no
+`.gitignore` e não deve ser versionado nunca. Copie o `.env.example` e preencha.
 
-```bash
-npx wrangler secret put SITE_USERNAME
-```
+**No site publicado** quem hospeda é o **Lovable** — o app roda em
+`centralonline.lovable.app`. As três variáveis são definidas lá, dentro do
+projeto no Lovable, e é lá que se trocam. Não há nada a fazer pela linha de
+comando.
 
-```bash
-npx wrangler secret put SITE_PASSWORD
-```
+> O projeto traz um `wrangler.jsonc` herdado do modelo TanStack Start. Ele
+> **não é usado**: ninguém publica este app na Cloudflare a partir daqui.
+> Ignore instruções de `wrangler secret put` — elas mirariam uma conta
+> Cloudflare própria, que não é onde o site está no ar, e um `wrangler deploy`
+> criaria uma segunda cópia separada em vez de atualizar o site.
 
-```bash
-npx wrangler secret put SESSION_SECRET
-```
-
-Para conferir o que já está definido (mostra os nomes, nunca os valores):
-
-```bash
-npx wrangler secret list
-```
-
-Se algum faltar, o servidor recusa o login e escreve no log qual variável está
-ausente e o comando para corrigi-la. Para ler esses logs em produção:
-
-```bash
-npx wrangler tail
-```
+Se alguma variável faltar, o servidor recusa o login e escreve no log qual é a
+ausente — em vez de devolver um erro mudo.
 
 ### Trocar a senha
 
-É o mesmo `wrangler secret put SITE_PASSWORD` — o valor novo substitui o antigo
-no próximo deploy. Troque também o `SESSION_SECRET` se suspeitar que ele vazou:
-isso invalida todas as sessões abertas e obriga todo mundo a entrar de novo.
+Troque no projeto do Lovable, no mesmo lugar onde as variáveis estão definidas,
+e publique de novo. Troque `SESSION_SECRET` junto se quiser derrubar todas as
+sessões abertas e obrigar todo mundo a entrar com a senha nova.
 
-## Build e deploy
+Lembre de atualizar também o seu `.env` local, senão o login para de funcionar
+no `npm run dev`.
+
+## Publicar
+
+O site é publicado pelo **Lovable**, a partir da branch `main` deste
+repositório. O fluxo é: comitar e enviar para o GitHub, abrir o projeto no
+Lovable, deixar ele puxar as mudanças e publicar.
+
+Para conferir se o build passa antes de enviar:
 
 ```bash
 npm run build
-```
-
-```bash
-npx wrangler deploy
 ```
 
 ## Estrutura
