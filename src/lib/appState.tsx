@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
-import type { FinancialRow, MembershipRow } from "./parsers";
+import type { FinancialRow, MembershipRow, SaldoRow } from "./parsers";
 import { getSessionServer, logoutServer } from "./gate.functions";
 
 type Step = "login" | "upload" | "dashboard";
@@ -11,12 +11,15 @@ interface AppState {
   setUser: (u: string | null) => void;
   financial: FinancialRow[];
   membership: MembershipRow[];
+  /** Saldo por centro de resultado. Base opcional: pode vir vazia. */
+  saldo: SaldoRow[];
   metaPorUnidade: Record<string, number>;
   metaAnualPorUnidade: Record<string, number>;
   metaAnualTotalGeral: number;
   setData: (
     f: FinancialRow[],
     m: MembershipRow[],
+    s: SaldoRow[],
     meta: Record<string, number>,
     metaAnual: Record<string, number>,
     metaAnualTotal: number,
@@ -31,6 +34,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<string | null>(null);
   const [financial, setFinancial] = useState<FinancialRow[]>([]);
   const [membership, setMembership] = useState<MembershipRow[]>([]);
+  const [saldo, setSaldo] = useState<SaldoRow[]>([]);
   const [metaPorUnidade, setMeta] = useState<Record<string, number>>({});
   const [metaAnualPorUnidade, setMetaAnual] = useState<Record<string, number>>({});
   const [metaAnualTotalGeral, setMetaAnualTotal] = useState(0);
@@ -79,6 +83,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setFinancial([]);
     setMembership([]);
+    setSaldo([]);
     setMeta({});
     setMetaAnual({});
     setMetaAnualTotal(0);
@@ -94,12 +99,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setUser,
         financial,
         membership,
+        saldo,
         metaPorUnidade,
         metaAnualPorUnidade,
         metaAnualTotalGeral,
-        setData: (f, m, meta, metaAnual, metaAnualTotal) => {
+        setData: (f, m, s, meta, metaAnual, metaAnualTotal) => {
           setFinancial(f);
           setMembership(m);
+          setSaldo(s);
           setMeta(meta);
           setMetaAnual(metaAnual);
           setMetaAnualTotal(metaAnualTotal);

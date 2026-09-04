@@ -21,7 +21,7 @@ import { EntradasDiarias } from "./dashboard/EntradasDiarias";
 import { SectionDeck, type SecaoDef } from "./dashboard/SectionDeck";
 
 export function Dashboard() {
-  const { financial, membership, metaAnualPorUnidade, metaAnualTotalGeral, user, signOut } =
+  const { financial, membership, saldo, metaAnualPorUnidade, metaAnualTotalGeral, user, signOut } =
     useApp();
   // Fechada por padrão: o deck foi desenhado para ocupar a tela inteira.
   const [aiOpen, setAiOpen] = useState(false);
@@ -166,6 +166,18 @@ export function Dashboard() {
   /** A base que as seções enxergam: os seis filtros já aplicados. */
   const dados = useMemo(() => aplicaDetalhe(escopoAno), [aplicaDetalhe, escopoAno]);
 
+  /*
+   * Saldo por centro de resultado. Só o filtro de unidade o alcança: é um saldo
+   * acumulado, uma fotografia de um instante, e recortá-lo por mês ou natureza
+   * não teria significado — o saldo de janeiro não é "a parte de janeiro" de
+   * nada, é o que havia em janeiro.
+   */
+  const saldoFiltrado = useMemo(() => {
+    if (!uniSel.length) return saldo;
+    const uSet = new Set(uniSel.map(norm));
+    return saldo.filter((r) => uSet.has(norm(r.unidade)));
+  }, [saldo, uniSel.join("|")]);
+
   /** A mesma base sem o recorte de mês, para a esteira do Gráfico 2. */
   const dadosTodosMeses = useMemo(
     () => aplicaDetalhe(escopoAnoSemMes),
@@ -209,6 +221,7 @@ export function Dashboard() {
             membership={membership}
             metaAnualPorUnidade={metaAnualPorUnidade}
             metaAnualTotalGeral={metaAnualTotalGeral}
+            saldo={saldoFiltrado}
             ano={ano}
             unidadesSel={uniSel}
             mesesSel={mesSel}
@@ -256,6 +269,7 @@ export function Dashboard() {
     [
       dados,
       dadosTodosMeses,
+      saldoFiltrado,
       membership,
       metaAnualPorUnidade,
       metaAnualTotalGeral,

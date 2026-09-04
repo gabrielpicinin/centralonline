@@ -307,6 +307,67 @@ export function normalizeFinancial(rows: RawRow[]): FinancialParsed {
   return { rows: out, metaPorUnidade, metaAnualPorUnidade, metaAnualTotalGeral };
 }
 
+/* ================= Saldo por Centro de Resultado ================= */
+
+export interface SaldoRow {
+  unidade: string;
+  /** Texto original da coluna "Período", preservado para rotular o card. */
+  periodo: string;
+  /** "atual" ou a competência do período; null quando não dá para interpretar. */
+  quando: "atual" | { ano: number; mes: number } | null;
+  saldo: number;
+}
+
+/*
+ * A coluna "Período" mistura duas naturezas: uma competência ("jan/26",
+ * "01/01/2026") e a palavra "Atual", que é o saldo de agora. Classificar aqui,
+ * uma vez, evita que cada leitor tenha de reinterpretar o texto — e é o que
+ * permite ao card achar sozinho qual é o mês de abertura da base.
+ */
+function classificarPeriodo(v: unknown): SaldoRow["quando"] {
+  const s = norm(v);
+  if (!s) return null;
+  if (s === "atual") return "atual";
+
+  // "jan/26", "jan-2026", "janeiro/2026"
+  const m = s.match(/^([a-z]{3})[a-z]*\s*[/-]\s*(\d{2,4})$/);
+  if (m) {
+    const mes = MES_MAP[m[1]];
+    if (mes) {
+      let ano = parseInt(m[2], 10);
+      if (ano < 100) ano += 2000;
+      return { ano, mes };
+    }
+  }
+
+  const d = parseDate(v);
+  if (d) return { ano: d.getFullYear(), mes: d.getMonth() + 1 };
+  return null;
+}
+
+export function normalizeSaldo(rows: RawRow[]): SaldoRow[] {
+  if (!rows.length) return [];
+  const sample = rows[0];
+  const kUnidade = pickKey(sample, [
+    "Descrição CR. 1º Nível",
+    "Descricao CR 1 Nivel",
+    "Centro de Resultado",
+    "CR 1 Nivel",
+    "Unidade",
+  ]);
+  const kPeriodo = pickKey(sample, ["Período", "Periodo"]);
+  const kSaldo = pickKey(sample, ["Saldo Acumulado", "Saldo Acum", "Saldo"]);
+
+  return rows
+    .map((r) => ({
+      unidade: kUnidade ? String(r[kUnidade] ?? "").trim() : "",
+      periodo: kPeriodo ? String(r[kPeriodo] ?? "").trim() : "",
+      quando: kPeriodo ? classificarPeriodo(r[kPeriodo]) : null,
+      saldo: kSaldo ? parseNumber(r[kSaldo]) : 0,
+    }))
+    .filter((r) => r.quando !== null);
+}
+
 export function normalizeMembership(rows: RawRow[]): MembershipRow[] {
   if (!rows.length) return [];
   const sample = rows[0];

@@ -27,6 +27,7 @@ import {
   Percent,
   Maximize2,
   Minimize2,
+  Scale,
 } from "lucide-react";
 import { BRLcompact, fmtBRL, fmtPct, MESES } from "@/lib/format";
 import {
@@ -36,6 +37,7 @@ import {
   norm,
   type FinancialRow,
   type MembershipRow,
+  type SaldoRow,
   metaAnualDaUnidade,
 } from "@/lib/parsers";
 import { useAnimarGraficos } from "./secaoAtiva";
@@ -46,6 +48,8 @@ interface Props {
   membership: MembershipRow[];
   metaAnualPorUnidade: Record<string, number>;
   metaAnualTotalGeral: number;
+  /** Saldo por centro de resultado, já recortado pela unidade. Pode vir vazio. */
+  saldo: SaldoRow[];
   // Valores dos filtros universais que a seção ainda precisa conhecer: o ano e
   // os meses para buscar membresia, as unidades para somar a meta anual delas.
   ano: number;
@@ -117,6 +121,86 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+/**
+ * Saldo por centro de resultado: a abertura do exercício e o saldo de agora.
+ *
+ * Duas linhas em vez de um número só porque o valor sozinho não diz nada — é a
+ * distância entre eles que informa. O card responde apenas ao filtro de unidade;
+ * ver a nota em Dashboard.tsx sobre por que mês e natureza não se aplicam a um
+ * saldo acumulado.
+ */
+function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
+  const { abertura, atual, temAtual } = useMemo(() => {
+    let soma = 0;
+    let achouAtual = false;
+    // Competências somadas por mês: a base traz uma linha por centro de resultado.
+    const porMes = new Map<string, { ano: number; mes: number; soma: number }>();
+
+    for (const r of saldo) {
+      if (r.quando === "atual") {
+        soma += r.saldo;
+        achouAtual = true;
+        continue;
+      }
+      if (!r.quando) continue;
+      const k = `${r.quando.ano}-${r.quando.mes}`;
+      const cur = porMes.get(k);
+      if (cur) cur.soma += r.saldo;
+      else porMes.set(k, { ...r.quando, soma: r.saldo });
+    }
+
+    /*
+     * A abertura é a competência mais antiga da base, não um "janeiro" fixo:
+     * assim o card acompanha a virada do ano sem ninguém ter de editar código.
+     */
+    const primeira =
+      Array.from(porMes.values()).sort((a, b) => a.ano - b.ano || a.mes - b.mes)[0] ?? null;
+
+    return { abertura: primeira, atual: soma, temAtual: achouAtual };
+  }, [saldo]);
+
+  const Linha = ({ rotulo, valor }: { rotulo: string; valor: number }) => (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-[13px] text-ink-2">{rotulo}</span>
+      <span className="text-[17px] font-semibold tabular-nums leading-tight text-ink">
+        {fmtBRL(valor)}
+      </span>
+    </div>
+  );
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: 0.1 }}
+      className="flex shrink-0 flex-col items-center gap-2.5 rounded-[10px] border border-line-soft bg-panel px-5 py-4 shadow-panel transition-colors hover:border-line-strong"
+    >
+      <Scale className="h-6 w-6 text-pos" />
+      <span className="text-[15px] font-medium leading-tight tracking-tight text-ink-2">
+        Saldo Centro de Resultado
+      </span>
+
+      {saldo.length === 0 ? (
+        <p className="pb-1 text-center text-[12.5px] leading-snug text-ink-3">
+          Base de saldo não carregada.
+          <br />
+          Envie o Arquivo 3 na tela anterior.
+        </p>
+      ) : (
+        <div className="w-full space-y-1">
+          {abertura && (
+            <Linha
+              rotulo={`${MESES[abertura.mes - 1]}/${String(abertura.ano).slice(-2)}`}
+              valor={abertura.soma}
+            />
+          )}
+          {temAtual && <Linha rotulo="Atual" valor={atual} />}
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
 /** Botão de expandir/recolher, no canto superior direito de um painel. */
 function BotaoExpandir({ aberto, onClick }: { aberto: boolean; onClick: () => void }) {
   return (
@@ -184,6 +268,7 @@ export function Section1Total({
   membership,
   metaAnualPorUnidade,
   metaAnualTotalGeral,
+  saldo,
   ano,
   unidadesSel,
   mesesSel,
@@ -554,7 +639,13 @@ export function Section1Total({
        */}
       <div
         ref={areaRef}
-        className="relative grid min-h-0 flex-1 grid-cols-[1fr_390px] grid-rows-[auto_1fr] gap-4"
+        /*
+         * A coluna da direita cresceu de 390 para 440px e passou a atravessar as
+         * duas linhas. Ela abriga o saldo e os dois donuts empilhados; a largura
+         * extra é o que faz "Depósitos Diretos" caber inteiro na legenda, que
+         * antes era truncada.
+         */
+        className="relative grid min-h-0 flex-1 grid-cols-[1fr_440px] grid-rows-[auto_1fr] gap-4"
       >
         <div className="grid grid-cols-4 grid-rows-2 gap-4">
           <MiniKpi
@@ -598,23 +689,37 @@ export function Section1Total({
           />
         </div>
 
-        <DonutCard
-          title="Distribuição de Dízimos e Ofertas"
-          subtitle="Participação por canal"
-          data={donutData.dizimos}
-          total={donutData.totalDizimos}
-          delay={2}
-          colors={donutData.dizimos.map((d) => {
-            const map: Record<string, string> = {
-              PIX: "#0F5F73",
-              "Depósitos Diretos": "#2E9BC7",
-              Cartões: "#7DD3FC",
-              Gazofilácio: "#8C9AAD",
-              "In Church": "#4E5A6B",
-            };
-            return map[d.name] ?? "#8b5cf6";
-          })}
-        />
+        {/* Coluna da direita: saldo em cima, os dois donuts embaixo. */}
+        <div className="row-span-2 flex min-h-0 flex-col gap-4">
+          <CardSaldo saldo={saldo} />
+
+          <DonutCard
+            title="Distribuição de Dízimos e Ofertas"
+            subtitle="Participação por canal"
+            data={donutData.dizimos}
+            total={donutData.totalDizimos}
+            delay={2}
+            colors={donutData.dizimos.map((d) => {
+              const map: Record<string, string> = {
+                PIX: "#0F5F73",
+                "Depósitos Diretos": "#2E9BC7",
+                Cartões: "#7DD3FC",
+                Gazofilácio: "#8C9AAD",
+                "In Church": "#4E5A6B",
+              };
+              return map[d.name] ?? "#8b5cf6";
+            })}
+          />
+
+          <DonutCard
+            title="Distribuição das Receitas"
+            subtitle="Dízimos e Ofertas vs. demais receitas"
+            data={donutData.distribuicao}
+            total={donutData.total}
+            delay={4}
+            colors={["#2E9BC7", "#4E5A6B"]}
+          />
+        </div>
 
         {/*
          * Vagas dos dois gráficos expansíveis. Eles vivem fora do fluxo,
@@ -625,15 +730,6 @@ export function Section1Total({
           <div ref={vaoTotaisRef} className="min-h-0 min-w-0" aria-hidden />
           <div ref={vaoMetaRef} className="min-h-0 min-w-0" aria-hidden />
         </div>
-
-        <DonutCard
-          title="Distribuição das Receitas"
-          subtitle="Dízimos e Ofertas vs. demais receitas"
-          data={donutData.distribuicao}
-          total={donutData.total}
-          delay={4}
-          colors={["#2E9BC7", "#4E5A6B"]}
-        />
 
         {/*
          * Véu: o resto da seção recua enquanto o gráfico está aberto. Clicar nele
@@ -982,14 +1078,16 @@ function DonutCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: delay * 0.06 }}
-      className="flex min-h-0 flex-col rounded-[10px] border border-line-soft bg-panel p-5 shadow-panel"
+      // flex-1: os dois donuts dividem o que sobra da coluna abaixo do saldo.
+      // Sem isso ficavam na altura natural e deixavam um vão morto no pé.
+      className="flex min-h-0 flex-1 flex-col rounded-[10px] border border-line-soft bg-panel p-5 shadow-panel"
     >
       <div className="mb-2">
         <h3 className="text-[15px] font-semibold text-ink">{title}</h3>
         <p className="text-[12.5px] text-ink-2">{subtitle}</p>
       </div>
       <div className="flex min-h-0 flex-1 items-center gap-4">
-        <div className="aspect-square h-full max-h-[210px] shrink-0">
+        <div className="aspect-square h-full max-h-[230px] shrink-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { UploadCloud, FileSpreadsheet, CheckCircle2, Users, DollarSign } from "lucide-react";
+import { UploadCloud, FileSpreadsheet, CheckCircle2, Users, DollarSign, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/appState";
-import { normalizeFinancial, normalizeMembership, parseFile } from "@/lib/parsers";
+import { normalizeFinancial, normalizeMembership, normalizeSaldo, parseFile } from "@/lib/parsers";
 
 interface DropProps {
   label: string;
@@ -72,9 +72,15 @@ export function Upload() {
   const { setStep, setData, user } = useApp();
   const [financeiroFile, setFinanceiro] = useState<File | null>(null);
   const [membresiaFile, setMembresia] = useState<File | null>(null);
+  const [saldoFile, setSaldo] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
+  /*
+   * O saldo não entra aqui: é base opcional. Exigi-la impediria de abrir o
+   * dashboard inteiro por causa de um card, e quem não a tiver vê esse card
+   * dizendo que falta a base — em vez de um zero que passaria por número real.
+   */
   const ready = financeiroFile && membresiaFile;
 
   /*
@@ -91,18 +97,35 @@ export function Upload() {
     setLoading(true);
     setErr("");
     try {
-      const [fr, mr] = await Promise.all([parseFile(financeiroFile), parseFile(membresiaFile)]);
+      const [fr, mr, sr] = await Promise.all([
+        parseFile(financeiroFile),
+        parseFile(membresiaFile),
+        saldoFile ? parseFile(saldoFile) : Promise.resolve([]),
+      ]);
       const fin = normalizeFinancial(fr);
       const mem = normalizeMembership(mr);
+      const sal = normalizeSaldo(sr);
       if (!fin.rows.length) throw new Error("Base financeira vazia ou inválida");
-      setData(fin.rows, mem, fin.metaPorUnidade, fin.metaAnualPorUnidade, fin.metaAnualTotalGeral);
+      if (saldoFile && !sal.length) {
+        throw new Error(
+          'Base de saldo sem linhas válidas — confira as colunas "Período" e "Saldo Acumulado"',
+        );
+      }
+      setData(
+        fin.rows,
+        mem,
+        sal,
+        fin.metaPorUnidade,
+        fin.metaAnualPorUnidade,
+        fin.metaAnualTotalGeral,
+      );
       setStep("dashboard");
     } catch (e) {
       setErr((e as Error).message ?? "Erro ao processar arquivos");
     } finally {
       setLoading(false);
     }
-  }, [financeiroFile, membresiaFile, setData, setStep]);
+  }, [financeiroFile, membresiaFile, saldoFile, setData, setStep]);
 
   return (
     <div className="min-h-screen bg-background p-6 md:p-10">
@@ -113,11 +136,12 @@ export function Upload() {
             Carregar bases de dados
           </h1>
           <p className="text-ink-2 mt-2 max-w-2xl">
-            Faça upload dos arquivos financeiro e de membresia para gerar o dashboard executivo.
+            Faça upload das bases para gerar o dashboard executivo. A de saldo é opcional — sem ela,
+            o dashboard abre normalmente e só o card de saldo fica vazio.
           </p>
         </motion.div>
 
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <DropZone
             label="Arquivo 1 — Dados Financeiros"
             hint="Entradas, dízimos, ofertas e metas"
@@ -131,6 +155,13 @@ export function Upload() {
             icon={<Users className="h-6 w-6" />}
             file={membresiaFile}
             onFile={setMembresia}
+          />
+          <DropZone
+            label="Arquivo 3 — Saldo por Centro de Resultado"
+            hint="Saldo acumulado por período (opcional)"
+            icon={<Scale className="h-6 w-6" />}
+            file={saldoFile}
+            onFile={setSaldo}
           />
         </div>
 
