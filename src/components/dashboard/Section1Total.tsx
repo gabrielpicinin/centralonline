@@ -159,12 +159,18 @@ function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
     return { abertura: primeira, atual: soma, temAtual: achouAtual };
   }, [saldo]);
 
+  /*
+   * Rótulo acima, valor abaixo, os dois centrados — a mesma disposição dos
+   * outros cards da seção. Antes o rótulo ficava à esquerda e o valor à direita,
+   * e o número acabava colado na borda, fora do eixo em que todos os outros
+   * valores da linha se alinham.
+   */
   const Linha = ({ rotulo, valor }: { rotulo: string; valor: number }) => (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="text-[13px] text-ink-2">{rotulo}</span>
-      <span className="text-[17px] font-semibold tabular-nums leading-tight text-ink">
+    <div className="text-center">
+      <p className="text-[12.5px] leading-tight text-ink-3">{rotulo}</p>
+      <p className="text-[19px] font-semibold leading-tight tabular-nums text-ink">
         {fmtBRL(valor)}
-      </span>
+      </p>
     </div>
   );
 
@@ -187,7 +193,7 @@ function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
           Envie o Arquivo 3 na tela anterior.
         </p>
       ) : (
-        <div className="w-full space-y-1">
+        <div className="w-full space-y-2">
           {abertura && (
             <Linha
               rotulo={`${MESES[abertura.mes - 1]}/${String(abertura.ano).slice(-2)}`}
