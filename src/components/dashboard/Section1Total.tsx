@@ -160,15 +160,18 @@ function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
   }, [saldo]);
 
   /*
-   * Rótulo acima, valor abaixo, os dois centrados — a mesma disposição dos
-   * outros cards da seção. Antes o rótulo ficava à esquerda e o valor à direita,
-   * e o número acabava colado na borda, fora do eixo em que todos os outros
-   * valores da linha se alinham.
+   * O rótulo fica preso à esquerda e o número é centrado no card — o mesmo eixo
+   * em que os valores dos outros cards da seção se alinham. O rótulo sai do
+   * fluxo justamente para não deslocar esse centro: se os dois dividissem a
+   * linha, "Jan/26" e "Atual" — de larguras diferentes — empurrariam cada
+   * número para um ponto distinto.
    */
   const Linha = ({ rotulo, valor }: { rotulo: string; valor: number }) => (
-    <div className="text-center">
-      <p className="text-[12.5px] leading-tight text-ink-3">{rotulo}</p>
-      <p className="text-[19px] font-semibold leading-tight tabular-nums text-ink">
+    <div className="relative">
+      <span className="absolute inset-y-0 left-0 flex items-center text-[13px] text-ink-2">
+        {rotulo}
+      </span>
+      <p className="text-center text-[17px] font-semibold leading-tight tabular-nums text-ink">
         {fmtBRL(valor)}
       </p>
     </div>
@@ -193,7 +196,7 @@ function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
           Envie o Arquivo 3 na tela anterior.
         </p>
       ) : (
-        <div className="w-full space-y-2">
+        <div className="w-full space-y-1">
           {abertura && (
             <Linha
               rotulo={`${MESES[abertura.mes - 1]}/${String(abertura.ano).slice(-2)}`}
