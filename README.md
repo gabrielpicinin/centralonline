@@ -1,8 +1,9 @@
 # Dashboard Financeiro Central
 
-Dashboard executivo de dízimos, ofertas e despesas. Lê as bases financeira e de
-membresia em `.csv` ou `.xlsx` e monta quatro seções navegáveis por um trilho de
-miniaturas à esquerda.
+Dashboard executivo de dízimos, ofertas e despesas. Lê as bases financeira, de
+membresia e de saldo por centro de resultado em `.csv` ou `.xlsx` e monta quatro
+seções navegáveis por um trilho de miniaturas à esquerda. A base de saldo é
+opcional — sem ela o dashboard abre normalmente, só o card de saldo fica vazio.
 
 **Os dados nunca saem do navegador.** Não existe banco nem envio: os arquivos são
 lidos, processados e mantidos em memória, e se perdem ao recarregar a página. Só
@@ -12,7 +13,7 @@ o login fala com o servidor.
 
 | | |
 |---|---|
-| 1 — Total Geral | KPIs do período, entradas x despesas, dízimos vs. meta e dois donuts de distribuição |
+| 1 — Total Geral | KPIs do período, entradas x despesas, dízimos vs. meta, saldo por centro de resultado e dois donuts de distribuição |
 | 2 — Acumulado Diário | Curva acumulada dia a dia contra a meta, comparação entre meses e a tabela do ano |
 | 3 — Análise de Despesas | Naturezas de 3º e 4º nível e despesa mensal, com filtragem cruzada por clique |
 | 4 — Controle de Metas | Meta contra realizado por categoria, com naturezas agrupadas |
@@ -104,6 +105,7 @@ src/
       EntradasDiarias.tsx        Seção 2
       Section2Despesas.tsx       Seção 3
       Section3Metas.tsx          Seção 4
+      secaoAtiva.tsx             adia o trabalho das seções fora do palco
   lib/
     parsers.ts                   leitura e normalização das planilhas
     gate.functions.ts            login, sessão e freio de força bruta
@@ -126,3 +128,14 @@ delas. A meta mensal é essa anual dividida por 12.
 
 **Base de membresia** — coluna `Unidades` e uma coluna por mês no formato
 `jan/26`, `fev/26`, e assim por diante.
+
+**Base de saldo por centro de resultado** — opcional. Três colunas:
+
+`Descrição CR. 1º Nível` (unidade) · `Período` · `Saldo Acumulado`
+
+O `Período` aceita tanto uma competência (`jan/26`, `01/01/2026`) quanto a
+palavra `Atual`. O card da Seção 1 mostra duas linhas: a competência mais antiga
+da base — que é a abertura do exercício, e por isso acompanha a virada do ano
+sem ninguém editar código — e o saldo `Atual`. Linhas com `Período` em branco ou
+irreconhecível são descartadas. Diferente das outras bases, esta responde apenas
+ao filtro de unidade: mês e natureza não fazem sentido sobre um saldo acumulado.
