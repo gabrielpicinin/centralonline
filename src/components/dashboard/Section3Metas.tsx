@@ -19,6 +19,13 @@ import { useAnimarGraficos } from "./secaoAtiva";
 interface Props {
   /** Base já recortada pelos filtros universais do cabeçalho. */
   financial: FinancialRow[];
+  /**
+   * Total de Dízimos e Ofertas do mesmo período e unidade, lido da coluna
+   * "Crédito". Denominador da aba "Relação entre Dízimos e Ofertas". Vem pronto
+   * do Dashboard porque precisa escapar dos filtros de Meta e Projeto — ver a
+   * nota lá.
+   */
+  dizimosOfertas: number;
 }
 
 /*
@@ -72,8 +79,21 @@ const META_TARGETS: { name: string; target: number }[] = [
   { name: "Outras Empresas", target: 0 },
 ];
 
+/*
+ * Colunas que ganham a aba "Relação entre Dízimos e Ofertas" no tooltip.
+ *
+ * Só estas duas por escolha do financeiro: são as que ele acompanha contra a
+ * arrecadação, e não contra o gasto total. Nenhuma delas é coluna agrupada,
+ * então a aba nunca disputa espaço com a de "Composição" — uma coluna mostra
+ * uma ou outra, nunca as duas.
+ */
+const RELACAO_DIZIMOS = new Set(["Pastores e Obreiros", "Pessoal"].map(norm));
+
 const GRAY = "#A6B2C2";
 const ORANGE = "#e76f51";
+/* Segunda régua da aba de dízimos. Mesma família do "Realizado", mais clara:
+   as duas barras medem a mesma quantia, e a cor diz que só a base muda. */
+const ORANGE_CLARO = "#f0a58f";
 /* Tons do laranja do "Realizado": a barra de um grupo repartida entre as partes.
    Só um grupo é exibido por vez, então a mesma escala serve para todos. */
 const TONS_GRUPO = ["#e76f51", "#f0a58f", "#f8d3c6"];
@@ -108,7 +128,7 @@ const MultiLineTick = (props: any) => {
   );
 };
 
-export function Section3Metas({ financial }: Props) {
+export function Section3Metas({ financial, dizimosOfertas }: Props) {
   // Unidade e mês já vieram aplicados do cabeçalho; resta o recorte da seção.
   const filtered = useMemo(() => financial.filter((r) => r.debito1 > 0), [financial]);
   // Miniatura na trilha não anima: ver nota em secaoAtiva.tsx.
@@ -200,6 +220,36 @@ export function Section3Metas({ financial }: Props) {
    * investimentos, que não existem em META_TARGETS (lá as três naturezas valem
    * 0% cada). Ler de dataRows mantém o rodapé em dia com as barras.
    */
+  /*
+   * As duas leituras do realizado, para as colunas de RELACAO_DIZIMOS.
+   *
+   * "sobre despesa" é o próprio número que a barra desenha: a categoria dividida
+   * pela despesa total. "sobre dízimos" troca o denominador pela arrecadação do
+   * período — mesma quantia em cima, base diferente embaixo.
+   *
+   * A meta é a mesma nas duas réguas de propósito. Ela é o alvo da categoria; o
+   * que muda de uma linha para a outra é contra o que o realizado é medido, e é
+   * essa distância que a aba existe para mostrar.
+   *
+   * A escala também é compartilhada: réguas com escalas próprias colocariam as
+   * duas barras em posições parecidas mesmo com valores distantes, que é o
+   * oposto do que se quer ver aqui.
+   */
+  const relacaoDizimos = useMemo(() => {
+    const m = new Map<
+      string,
+      { meta: number; sobreDespesa: number; sobreDizimos: number; escala: number }
+    >();
+    for (const r of dataRows) {
+      if (!RELACAO_DIZIMOS.has(norm(r.name))) continue;
+      const sobreDizimos = dizimosOfertas > 0 ? (r.abs / dizimosOfertas) * 100 : 0;
+      // O 1,15 deixa folga à direita para a barra mais longa não encostar na borda.
+      const escala = Math.max(r.realizado, sobreDizimos, r.meta) * 1.15 || 1;
+      m.set(norm(r.name), { meta: r.meta, sobreDespesa: r.realizado, sobreDizimos, escala });
+    }
+    return m;
+  }, [dataRows, dizimosOfertas]);
+
   const metaEconomia = useMemo(() => dataRows.reduce((s, r) => s + r.meta, 0), [dataRows]);
   const realizadoTotal = useMemo(() => dataRows.reduce((s, r) => s + r.realizado, 0), [dataRows]);
 
@@ -210,6 +260,8 @@ export function Section3Metas({ financial }: Props) {
     if (!active || !payload?.length) return null;
     // Só a coluna agrupada ganha a aba de composição ao lado.
     const partes = composicaoPorGrupo.get(norm(label ?? "")) ?? null;
+    // E só as de RELACAO_DIZIMOS ganham a das duas réguas. Nunca as duas abas.
+    const relacao = relacaoDizimos.get(norm(label ?? "")) ?? null;
     return (
       <div className="flex items-stretch overflow-hidden rounded-lg border border-white/[.16] bg-[#161A21] text-xs shadow-lg">
         <div className="px-3 py-2">
@@ -261,6 +313,56 @@ export function Section3Metas({ financial }: Props) {
 
             <p className="mt-2 border-t border-white/[.14] pt-1.5 text-[11px] text-ink-3">
               % do débito total · % dentro do grupo
+            </p>
+          </div>
+        )}
+
+        {relacao && (
+          <div className="min-w-[268px] border-l border-white/[.16] px-3 py-2">
+            <p className="mb-2.5 font-semibold text-ink">Relação entre Dízimos e Ofertas</p>
+
+            <div className="space-y-2.5">
+              {[
+                { rotulo: "sobre despesa", valor: relacao.sobreDespesa, cor: ORANGE },
+                { rotulo: "sobre dízimos", valor: relacao.sobreDizimos, cor: ORANGE_CLARO },
+              ].map((l) => (
+                <div key={l.rotulo}>
+                  <div className="mb-1 flex items-baseline justify-between gap-3">
+                    <span className="text-ink-2">{l.rotulo}</span>
+                    <span className="font-medium tabular-nums text-ink">{fmtPct(l.valor)}</span>
+                  </div>
+
+                  {/*
+                   * A trilha não recorta o conteúdo: o traço da meta transborda
+                   * de propósito, alguns pixels acima e abaixo da barra, para se
+                   * ler como marca de régua e não como emenda do preenchimento.
+                   */}
+                  <div className="relative h-2.5 rounded-full bg-white/10">
+                    <div
+                      className="absolute inset-y-0 left-0 rounded-full"
+                      style={{
+                        width: `${Math.min(100, (l.valor / relacao.escala) * 100).toFixed(2)}%`,
+                        background: l.cor,
+                      }}
+                    />
+                    <div
+                      className="absolute inset-y-[-2.5px] w-[2px] -translate-x-1/2 rounded-full"
+                      style={{
+                        left: `${((relacao.meta / relacao.escala) * 100).toFixed(2)}%`,
+                        background: GRAY,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/[.14] pt-1.5 text-[11px] text-ink-3">
+              <span
+                className="inline-block h-2.5 w-[2px] shrink-0 rounded-full"
+                style={{ background: GRAY }}
+              />
+              meta {fmtPct(relacao.meta)} — a mesma nas duas réguas
             </p>
           </div>
         )}

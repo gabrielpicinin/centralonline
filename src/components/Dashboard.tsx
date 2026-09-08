@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useApp } from "@/lib/appState";
-import { norm } from "@/lib/parsers";
+import { isDizimosOfertas, norm } from "@/lib/parsers";
 import { MESES } from "@/lib/format";
 import { AISidebar } from "./AISidebar";
 import { LogoCentral } from "./LogoCentral";
@@ -167,6 +167,23 @@ export function Dashboard() {
   const dados = useMemo(() => aplicaDetalhe(escopoAno), [aplicaDetalhe, escopoAno]);
 
   /*
+   * Total de Dízimos e Ofertas do recorte — denominador da aba "Relação entre
+   * Dízimos e Ofertas" no tooltip da Seção 4.
+   *
+   * Lê a coluna "Crédito" (credito1), a mesma do card da Seção 1, para as duas
+   * telas nunca discordarem sobre quanto a igreja arrecadou.
+   *
+   * Sai de escopoAno, e não de `dados`: as linhas de dízimo têm Meta e Projeto
+   * vazios, então filtrar por qualquer meta ou projeto no cabeçalho as varreria
+   * e o denominador iria a zero — a aba mostraria porcentagens infinitas
+   * justamente quando alguém fosse investigar uma meta específica.
+   */
+  const dizimosOfertas = useMemo(
+    () => escopoAno.reduce((s, r) => (isDizimosOfertas(r.nat2) ? s + r.credito1 : s), 0),
+    [escopoAno],
+  );
+
+  /*
    * Saldo por centro de resultado. Só o filtro de unidade o alcança: é um saldo
    * acumulado, uma fotografia de um instante, e recortá-lo por mês ou natureza
    * não teria significado — o saldo de janeiro não é "a parte de janeiro" de
@@ -261,7 +278,7 @@ export function Dashboard() {
           // O card de metas é o próprio conteúdo da seção; a moldura com padding
           // fica aqui para ele não encostar nas bordas do quadro de design.
           <div className="flex h-full w-full min-h-0 flex-col p-6">
-            <Section3Metas financial={dados} />
+            <Section3Metas financial={dados} dizimosOfertas={dizimosOfertas} />
           </div>
         ),
       },
