@@ -89,7 +89,11 @@ const META_TARGETS: { name: string; target: number }[] = [
  */
 const RELACAO_DIZIMOS = new Set(["Pastores e Obreiros", "Pessoal"].map(norm));
 
-const GRAY = "#A6B2C2";
+/* Cor da Meta, em toda parte: a barra do gráfico e os dois traços da aba de
+   dízimos. Um cinza claro puxado para o azul — continua lendo como cinza/branco
+   ao lado do laranja do Realizado, e o azul o separa dele por matiz, não só por
+   tom, o que ajuda quem enxerga cor de forma diferente. */
+const CINZA_AZUL = "#AFC0DB";
 const ORANGE = "#e76f51";
 /* Segunda régua da aba de dízimos. Mesma família do "Realizado", mais clara:
    as duas barras medem a mesma quantia, e a cor diz que só a base muda. */
@@ -349,7 +353,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
                       className="absolute inset-y-[-2.5px] w-[2px] -translate-x-1/2 rounded-full"
                       style={{
                         left: `${((relacao.meta / relacao.escala) * 100).toFixed(2)}%`,
-                        background: GRAY,
+                        background: CINZA_AZUL,
                       }}
                     />
                   </div>
@@ -360,7 +364,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
             <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/[.14] pt-1.5 text-[11px] text-ink-3">
               <span
                 className="inline-block h-2.5 w-[2px] shrink-0 rounded-full"
-                style={{ background: GRAY }}
+                style={{ background: CINZA_AZUL }}
               />
               meta {fmtPct(relacao.meta)} — a mesma nas duas réguas
             </p>
@@ -554,7 +558,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
               <Bar
                 dataKey="meta"
                 name="Meta"
-                fill={GRAY}
+                fill={CINZA_AZUL}
                 radius={[4, 4, 0, 0]}
                 barSize={38}
                 isAnimationActive={animarGraficos}
