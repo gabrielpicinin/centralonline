@@ -1425,7 +1425,6 @@ function TabelaPeriodo({
     .join(", ");
 
   const somaVal = TODOS.reduce((s, m) => s + (vazio(m) ? 0 : totalPorMes[m]), 0);
-  const nCom = mesesComDado.length;
   const somaAnt = anoAntPorMes.reduce((s, v) => s + v, 0);
   const membCom = TODOS.filter((m) => membPorMes[m] > 0);
   const membMedia = membCom.length
@@ -1439,7 +1438,17 @@ function TabelaPeriodo({
   const vmMedia = vmCom.length
     ? vmCom.reduce((s, m) => s + totalPorMes[m] / membPorMes[m], 0) / vmCom.length
     : 0;
-  const pctAcum = nCom && metaMensal > 0 ? (somaVal / (metaMensal * nCom) - 1) * 100 : 0;
+  /*
+   * Meta acumulada dos meses com dado, com o mês em curso entrando só pela
+   * parte que venceu — a mesma regra das células da linha acima.
+   *
+   * Antes o denominador era `metaMensal * nCom`, que cobrava o mês parcial
+   * como se estivesse fechado e derrubava o acumulado por causa do calendário,
+   * não do desempenho. É o mesmo defeito que a célula do mês já corrigiu; se
+   * ficasse só nela, o acumulado contradiria a própria linha.
+   */
+  const metaAcum = TODOS.reduce((s, m) => (vazio(m) ? s : s + metaDoMes(m)), 0);
+  const pctAcum = metaAcum > 0 ? (somaVal / metaAcum - 1) * 100 : 0;
 
   const Td = ({ m, children }: { m: number; children?: React.ReactNode }) => (
     <td
@@ -1526,7 +1535,7 @@ function TabelaPeriodo({
                       string. Em outro elemento não há disputa: o span apenas
                       sobrepõe a cor herdada. */}
                   {nf(metaDoMes(m) / 1000)}
-                  {m === mesParcial ? <span className="text-[#B0803A]">*</span> : ""}
+                  {m === mesParcial ? <span className="text-[#B0803A]">&nbsp;*</span> : ""}
                 </Td>
               ))}
               <TdTotal>{nf((metaMensal * 12) / 1000)}</TdTotal>
@@ -1535,10 +1544,14 @@ function TabelaPeriodo({
             <Linha titulo="% Real / Meta">
               {TODOS.map((m) => (
                 <Td key={m} m={m}>
-                  {vazio(m) || metaMensal <= 0 ? (
+                  {/* Compara contra a meta que já venceu, não contra a do mês
+                      cheio: no mês em curso faltam dias de lançamento, e medir
+                      o realizado parcial contra a meta inteira mostraria uma
+                      queda que é do calendário, não do desempenho. */}
+                  {vazio(m) || metaDoMes(m) <= 0 ? (
                     ""
                   ) : (
-                    <Pill v={(totalPorMes[m] / metaMensal - 1) * 100} />
+                    <Pill v={(totalPorMes[m] / metaDoMes(m) - 1) * 100} />
                   )}
                 </Td>
               ))}
