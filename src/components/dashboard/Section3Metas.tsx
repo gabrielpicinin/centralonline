@@ -90,14 +90,16 @@ const META_TARGETS: { name: string; target: number }[] = [
 const RELACAO_DIZIMOS = new Set(["Pastores e Obreiros", "Pessoal"].map(norm));
 
 /* Cor da Meta, em toda parte: a barra do gráfico e os dois traços da aba de
-   dízimos. Um cinza claro puxado para o azul — continua lendo como cinza/branco
-   ao lado do laranja do Realizado, e o azul o separa dele por matiz, não só por
-   tom, o que ajuda quem enxerga cor de forma diferente. */
-const CINZA_AZUL = "#9DB6E3";
+   dízimos. Vem da paleta da Seção 1, o mesmo azul claro de lá — e separa a Meta
+   do laranja do Realizado por matiz, não só por tom, o que sobrevive a uma
+   impressão em preto e branco e a quem enxerga cor de forma diferente. */
+const AZUL_META = "#84CDDF";
 const ORANGE = "#e76f51";
-/* Segunda régua da aba de dízimos. Mesma família do "Realizado", mais clara:
-   as duas barras medem a mesma quantia, e a cor diz que só a base muda. */
-const ORANGE_CLARO = "#f0a58f";
+/* Segunda régua da aba: o realizado medido contra a arrecadação. É o mesmo azul
+   que a Seção 1 usa para as entradas de crédito — e não por acaso, já que são
+   exatamente essas entradas que estão no denominador aqui. A cor faz a ponte
+   entre as duas telas. */
+const AZUL_DIZIMOS = "#2E9BC7";
 /* Tons do laranja do "Realizado": a barra de um grupo repartida entre as partes.
    Só um grupo é exibido por vez, então a mesma escala serve para todos. */
 const TONS_GRUPO = ["#e76f51", "#f0a58f", "#f8d3c6"];
@@ -328,7 +330,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
             <div className="space-y-2.5">
               {[
                 { rotulo: "sobre despesa", valor: relacao.sobreDespesa, cor: ORANGE },
-                { rotulo: "sobre dízimos", valor: relacao.sobreDizimos, cor: ORANGE_CLARO },
+                { rotulo: "sobre dízimos", valor: relacao.sobreDizimos, cor: AZUL_DIZIMOS },
               ].map((l) => (
                 <div key={l.rotulo}>
                   <div className="mb-1 flex items-baseline justify-between gap-3">
@@ -353,7 +355,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
                       className="absolute inset-y-[-2.5px] w-[2px] -translate-x-1/2 rounded-full"
                       style={{
                         left: `${((relacao.meta / relacao.escala) * 100).toFixed(2)}%`,
-                        background: CINZA_AZUL,
+                        background: AZUL_META,
                       }}
                     />
                   </div>
@@ -364,7 +366,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
             <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/[.14] pt-1.5 text-[11px] text-ink-3">
               <span
                 className="inline-block h-2.5 w-[2px] shrink-0 rounded-full"
-                style={{ background: CINZA_AZUL }}
+                style={{ background: AZUL_META }}
               />
               meta {fmtPct(relacao.meta)} — a mesma nas duas réguas
             </p>
@@ -558,7 +560,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
               <Bar
                 dataKey="meta"
                 name="Meta"
-                fill={CINZA_AZUL}
+                fill={AZUL_META}
                 radius={[4, 4, 0, 0]}
                 barSize={38}
                 isAnimationActive={animarGraficos}
