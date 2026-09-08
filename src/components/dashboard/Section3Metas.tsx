@@ -93,7 +93,7 @@ const RELACAO_DIZIMOS = new Set(["Pastores e Obreiros", "Pessoal"].map(norm));
    dízimos. Um cinza claro puxado para o azul — continua lendo como cinza/branco
    ao lado do laranja do Realizado, e o azul o separa dele por matiz, não só por
    tom, o que ajuda quem enxerga cor de forma diferente. */
-const CINZA_AZUL = "#AFC0DB";
+const CINZA_AZUL = "#9DB6E3";
 const ORANGE = "#e76f51";
 /* Segunda régua da aba de dízimos. Mesma família do "Realizado", mais clara:
    as duas barras medem a mesma quantia, e a cor diz que só a base muda. */
