@@ -1397,17 +1397,11 @@ function TabelaPeriodo({
   const TODOS = Array.from({ length: 12 }, (_, i) => i);
   const vazio = (m: number) => !mesesComDado.includes(m);
   /*
-   * Devolve SEMPRE uma cor de texto, e a célula não traz nenhuma outra — do
-   * contrário as duas classes disputam.
-   *
-   * Era o que acontecia antes: a célula tinha `text-ink` fixo e recebia
-   * `text-[#B0803A]` por cima. As duas têm a mesma especificidade, então quem
-   * vence é a que sai por último no CSS gerado, e não a ordem na string de
-   * classes — o laranja do mês em curso perdia e nunca chegava à tela. O
-   * cabeçalho da coluna aparecia laranja porque lá não havia concorrente.
+   * O mês em curso não tinge as células: o destaque dele vive no cabeçalho da
+   * coluna e no asterisco da linha Meta, e só. Uma coluna inteira em laranja
+   * competiria com os próprios números.
    */
-  const cls = (m: number) =>
-    vazio(m) ? "bg-void text-[#4E596A]" : m === mesParcial ? "text-[#B0803A]" : "text-ink";
+  const cls = (m: number) => (vazio(m) ? "bg-void text-[#4E596A]" : "");
   const sufixo = anos.length === 1 ? "/" + String(anos[0]).slice(2) : "";
 
   /*
@@ -1449,7 +1443,7 @@ function TabelaPeriodo({
 
   const Td = ({ m, children }: { m: number; children?: React.ReactNode }) => (
     <td
-      className={`px-2.5 py-[3px] text-center whitespace-nowrap tabular-nums border-b border-[#242B37] transition-colors group-hover:bg-row-hover ${cls(m)}`}
+      className={`px-2.5 py-[3px] text-center whitespace-nowrap tabular-nums border-b border-[#242B37] text-ink transition-colors group-hover:bg-row-hover ${cls(m)}`}
     >
       {children}
     </td>
@@ -1524,11 +1518,15 @@ function TabelaPeriodo({
             <Linha titulo="Meta">
               {TODOS.map((m) => (
                 <Td key={m} m={m}>
-                  {/* Sem cor própria de propósito: a célula inteira já é
-                      laranja pelo cls(), e o asterisco herda. Dar cor a ele
-                      aqui recriaria a disputa de classes descrita lá em cima. */}
+                  {/* Só o asterisco é laranja — o número fica na cor de sempre.
+                      A cor vai num <span> próprio, e não numa classe do <td>:
+                      no <td> ela disputaria com o `text-ink` de lá, e como as
+                      duas classes têm a mesma especificidade quem venceria
+                      seria a que sai por último no CSS gerado, não a ordem na
+                      string. Em outro elemento não há disputa: o span apenas
+                      sobrepõe a cor herdada. */}
                   {nf(metaDoMes(m) / 1000)}
-                  {m === mesParcial ? "*" : ""}
+                  {m === mesParcial ? <span className="text-[#B0803A]">*</span> : ""}
                 </Td>
               ))}
               <TdTotal>{nf((metaMensal * 12) / 1000)}</TdTotal>
