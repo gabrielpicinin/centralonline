@@ -1527,13 +1527,24 @@ function TabelaPeriodo({
             <Linha titulo="Meta">
               {TODOS.map((m) => (
                 <Td key={m} m={m}>
-                  {/* Só o asterisco é laranja — o número fica na cor de sempre.
-                      A cor vai num <span> próprio, e não numa classe do <td>:
-                      no <td> ela disputaria com o `text-ink` de lá, e como as
-                      duas classes têm a mesma especificidade quem venceria
-                      seria a que sai por último no CSS gerado, não a ordem na
-                      string. Em outro elemento não há disputa: o span apenas
-                      sobrepõe a cor herdada. */}
+                  {/* Três detalhes desta célula, todos deliberados:
+
+                      1. Só o asterisco é laranja; o número fica na cor de
+                         sempre. A cor vai num <span> próprio e não numa classe
+                         do <td>, porque no <td> ela disputaria com o `text-ink`
+                         de lá — mesma especificidade, vence quem sai por último
+                         no CSS gerado, não a ordem na string. Em outro elemento
+                         não há disputa: o span só sobrepõe a cor herdada.
+
+                      2. O espaço da esquerda contrapesa o " *" da direita. Sem
+                         ele o asterisco empurra o número para fora do eixo em
+                         que os outros meses se alinham.
+
+                      3. Os dois espaços são não-quebráveis. Um espaço comum na
+                         abertura seria descartado pelo navegador, que apara o
+                         branco nas pontas da linha, e a compensação sumiria sem
+                         deixar rastro. */}
+                  {m === mesParcial ? "\u00A0" : ""}
                   {nf(metaDoMes(m) / 1000)}
                   {m === mesParcial ? <span className="text-[#B0803A]">&nbsp;*</span> : ""}
                 </Td>
