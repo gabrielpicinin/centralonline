@@ -1527,26 +1527,33 @@ function TabelaPeriodo({
             <Linha titulo="Meta">
               {TODOS.map((m) => (
                 <Td key={m} m={m}>
-                  {/* Três detalhes desta célula, todos deliberados:
+                  {/* O asterisco não entra na conta do alinhamento.
 
-                      1. Só o asterisco é laranja; o número fica na cor de
-                         sempre. A cor vai num <span> próprio e não numa classe
-                         do <td>, porque no <td> ela disputaria com o `text-ink`
-                         de lá — mesma especificidade, vence quem sai por último
-                         no CSS gerado, não a ordem na string. Em outro elemento
-                         não há disputa: o span só sobrepõe a cor herdada.
+                      A caixa dele tem largura zero, então a linha mede só o
+                      número: a célula centraliza esse número no mesmo eixo
+                      dos outros meses e o asterisco transborda para a
+                      direita, sem deslocar nada. Contrapesar com um espaço
+                      à esquerda, que foi a primeira tentativa, mantinha o
+                      número fora do eixo — apenas trocava um desvio grande
+                      por um pequeno.
 
-                      2. O espaço da esquerda contrapesa o " *" da direita. Sem
-                         ele o asterisco empurra o número para fora do eixo em
-                         que os outros meses se alinham.
+                      O afastamento da direita vem de `left`, e não de padding:
+                      com box-sizing border-box um padding faria a caixa voltar
+                      a ocupar espaço e o desvio retornaria. Deslocamento
+                      relativo pinta fora do lugar sem medir nada.
 
-                      3. Os dois espaços são não-quebráveis. Um espaço comum na
-                         abertura seria descartado pelo navegador, que apara o
-                         branco nas pontas da linha, e a compensação sumiria sem
-                         deixar rastro. */}
-                  {m === mesParcial ? "\u00A0" : ""}
+                      A cor vai no span, e não numa classe do <td>, porque
+                      no <td> ela disputaria com o `text-ink` de lá: mesma
+                      especificidade, vence quem sai por último no CSS
+                      gerado, e não a ordem na string. */}
                   {nf(metaDoMes(m) / 1000)}
-                  {m === mesParcial ? <span className="text-[#B0803A]">&nbsp;*</span> : ""}
+                  {m === mesParcial ? (
+                    <span className="relative left-[3px] inline-block w-0 whitespace-nowrap text-[#B0803A]">
+                      *
+                    </span>
+                  ) : (
+                    ""
+                  )}
                 </Td>
               ))}
               <TdTotal>{nf((metaMensal * 12) / 1000)}</TdTotal>
