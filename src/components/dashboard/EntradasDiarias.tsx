@@ -279,55 +279,82 @@ export function EntradasDiarias({
     [mesEmCurso, mesesComDado.join(","), ultimoDiaPorMes.join(",")],
   );
 
+  /** Tudo marcado equivale a nenhum filtro de unidade. */
+  const todasUnidades = unis.length === unidades.length && unidades.length > 0;
+
   /*
-   * Meta mensal = meta ANUAL do recorte / 12. Com todas as unidades, a anual é a
-   * coluna "Meta Anual Total Geral"; com uma seleção, a soma das colunas
-   * "Meta Anual <Unidade>". Multiplica pelos anos porque os totais também somam
-   * quando mais de um ano é selecionado.
+   * Meta ANUAL do recorte de unidades. Com todas, é a coluna "Meta Anual Total
+   * Geral"; com uma seleção, a soma das colunas "Meta Anual <Unidade>". O
+   * consolidado é lido à parte, nunca somado com as unidades: ele já é a soma
+   * delas, e juntar os dois contaria tudo duas vezes.
+   *
+   * Fica isolado num memo porque os gráficos e a tabela "Números do período"
+   * dependem do mesmo número — antes cada um tinha a sua cópia da regra.
    */
-  const metaMensal = useMemo(() => {
-    const todasUnidades = unis.length === unidades.length && unidades.length > 0;
-    const anual = todasUnidades
-      ? metaAnualTotalGeral
-      : unis.reduce((s, u) => s + metaAnualDaUnidade(metaAnualPorUnidade, u), 0);
-    return (anual / 12) * Math.max(1, anosNum.length);
-  }, [metaAnualPorUnidade, metaAnualTotalGeral, unis.join("|"), unidades.length, anosNum.length]);
+  const metaAnualDoRecorte = useMemo(
+    () =>
+      todasUnidades
+        ? metaAnualTotalGeral
+        : unis.reduce((s, u) => s + metaAnualDaUnidade(metaAnualPorUnidade, u), 0),
+    [metaAnualPorUnidade, metaAnualTotalGeral, unis.join("|"), todasUnidades],
+  );
+
+  /* Multiplica pelos anos porque os totais também somam quando mais de um ano
+     é selecionado. */
+  const metaMensal = useMemo(
+    () => (metaAnualDoRecorte / 12) * Math.max(1, anosNum.length),
+    [metaAnualDoRecorte, anosNum.length],
+  );
 
   /* ================= tabela "Números do período" =================
-   * Bloco de referência fixo: lê da base crua, sem nenhum dos filtros do
-   * cabeçalho. Nenhuma coluna esvazia ao filtrar um mês, nenhum valor encolhe
-   * ao escolher uma unidade — os doze meses do ano ficam sempre à vista, para
-   * comparar contra o que os gráficos ao lado estão mostrando.
+   * Bloco de referência: lê da base crua, e não do recorte que alimenta os
+   * gráficos, para que os doze meses do ano fiquem sempre à vista. Filtrar um
+   * mês, uma natureza, um projeto ou uma meta no cabeçalho não encolhe nada
+   * daqui — é justamente contra este bloco fixo que se compara o que o gráfico
+   * ao lado, esse sim recortado, está mostrando.
    *
-   * O ano é a única exceção possível: sem ele a tabela não teria período nenhum
-   * para exibir, então continua sendo o ano escolhido no cabeçalho.
+   * Duas exceções, e só duas. O ANO, porque sem ele a tabela não teria período
+   * nenhum para exibir. E a UNIDADE, porque uma referência que ignora a igreja
+   * escolhida deixa de ser referência: a tabela somaria a rede inteira enquanto
+   * o gráfico ao lado mostra uma unidade só, e os dois números lado a lado não
+   * teriam nenhuma relação entre si.
    */
   const dizimosDoAno = useMemo(
-    () => financialBruto.filter((r) => r.ano === ano && isDizimosOfertas(r.nat2)),
-    [financialBruto, ano],
+    () =>
+      financialBruto.filter(
+        (r) => r.ano === ano && isDizimosOfertas(r.nat2) && unisNorm.has(norm(r.unidade)),
+      ),
+    [financialBruto, ano, unisNorm],
   );
   const tabela = useMemo(() => agregarPorMes(dizimosDoAno, ano), [dizimosDoAno, ano]);
 
-  /* Meta e membresia da tabela: Total Geral, como o resto dela. */
-  const metaMensalTabela = metaAnualTotalGeral / 12;
+  /* Meta e membresia seguem o mesmo recorte de unidade das linhas acima: se o
+     numerador encolhe para uma unidade, o denominador tem de encolher junto,
+     senão o dízimo per capita e o % da meta ficam sem sentido. */
+  const metaMensalTabela = metaAnualDoRecorte / 12;
 
-  const membPorMes = useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, m) =>
-        membershipForMonth(membership, "Total Geral", ano, m + 1),
-      ),
-    [membership, ano],
-  );
+  const membPorMes = useMemo(() => {
+    /*
+     * Com tudo marcado, lê a linha "Total Geral" da planilha em vez de somar as
+     * unidades — é o número que a própria base declara, e ele nem sempre bate
+     * com a soma: uma unidade ausente da planilha de membresia sumiria da conta.
+     */
+    const alvos = todasUnidades ? ["Total Geral"] : unis;
+    return Array.from({ length: 12 }, (_, m) =>
+      alvos.reduce((s, u) => s + membershipForMonth(membership, u, ano, m + 1), 0),
+    );
+  }, [membership, ano, todasUnidades, unis.join("|")]);
 
   const anoAntPorMes = useMemo(() => {
     const arr = Array(12).fill(0);
     for (const r of financialBruto) {
       if (r.ano !== ano - 1 || !isDizimosOfertas(r.nat2)) continue;
+      if (!unisNorm.has(norm(r.unidade))) continue;
       const m = r.data ? r.data.getMonth() : r.mes - 1;
       if (m >= 0 && m <= 11) arr[m] += r.credito;
     }
     return arr;
-  }, [financialBruto, ano]);
+  }, [financialBruto, ano, unisNorm]);
 
   const { mesParcial: mesParcialTabela, diaCorte: diaCorteTabela } = useMemo(
     () => mesEmCurso(tabela.mesesComDado, tabela.ultimoDiaPorMes),
