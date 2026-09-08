@@ -1396,9 +1396,35 @@ function TabelaPeriodo({
 }) {
   const TODOS = Array.from({ length: 12 }, (_, i) => i);
   const vazio = (m: number) => !mesesComDado.includes(m);
+  /*
+   * Devolve SEMPRE uma cor de texto, e a célula não traz nenhuma outra — do
+   * contrário as duas classes disputam.
+   *
+   * Era o que acontecia antes: a célula tinha `text-ink` fixo e recebia
+   * `text-[#B0803A]` por cima. As duas têm a mesma especificidade, então quem
+   * vence é a que sai por último no CSS gerado, e não a ordem na string de
+   * classes — o laranja do mês em curso perdia e nunca chegava à tela. O
+   * cabeçalho da coluna aparecia laranja porque lá não havia concorrente.
+   */
   const cls = (m: number) =>
-    vazio(m) ? "bg-void text-[#4E596A]" : m === mesParcial ? "text-[#B0803A]" : "";
+    vazio(m) ? "bg-void text-[#4E596A]" : m === mesParcial ? "text-[#B0803A]" : "text-ink";
   const sufixo = anos.length === 1 ? "/" + String(anos[0]).slice(2) : "";
+
+  /*
+   * Meta do mês em curso, proporcional aos dias que a base já cobre.
+   *
+   * Um mês com lançamentos só até o dia 25 comparado contra a meta cheia de 31
+   * dias aparece como um fracasso que não aconteceu: falta arrecadação porque
+   * faltam seis dias de lançamento, não porque a igreja ficou para trás. A meta
+   * ainda não venceu por inteiro, então a linha mostra a parte dela que venceu.
+   *
+   * Vale só para a célula do mês. O "Acumulado" continua sendo a meta ANUAL
+   * cheia — é o compromisso do ano, e ele não encolhe porque agosto ainda não
+   * acabou.
+   */
+  const anoBase = anos[0] ?? new Date().getFullYear();
+  const metaDoMes = (m: number) =>
+    m === mesParcial ? (metaMensal / diasNoMes(anoBase, m)) * diaCorte : metaMensal;
   const anoAnt = anos
     .map((a) => a - 1)
     .sort((a, b) => a - b)
@@ -1423,7 +1449,7 @@ function TabelaPeriodo({
 
   const Td = ({ m, children }: { m: number; children?: React.ReactNode }) => (
     <td
-      className={`px-2.5 py-[3px] text-center whitespace-nowrap tabular-nums border-b border-[#242B37] text-ink transition-colors group-hover:bg-row-hover ${cls(m)}`}
+      className={`px-2.5 py-[3px] text-center whitespace-nowrap tabular-nums border-b border-[#242B37] transition-colors group-hover:bg-row-hover ${cls(m)}`}
     >
       {children}
     </td>
@@ -1498,7 +1524,11 @@ function TabelaPeriodo({
             <Linha titulo="Meta">
               {TODOS.map((m) => (
                 <Td key={m} m={m}>
-                  {nf(metaMensal / 1000)}
+                  {/* Sem cor própria de propósito: a célula inteira já é
+                      laranja pelo cls(), e o asterisco herda. Dar cor a ele
+                      aqui recriaria a disputa de classes descrita lá em cima. */}
+                  {nf(metaDoMes(m) / 1000)}
+                  {m === mesParcial ? "*" : ""}
                 </Td>
               ))}
               <TdTotal>{nf((metaMensal * 12) / 1000)}</TdTotal>
