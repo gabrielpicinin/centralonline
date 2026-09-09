@@ -137,6 +137,33 @@ function agregarPorMes(rows: FinancialRow[], ano: number) {
   };
 }
 
+/*
+ * Converte a posição do ponteiro para as unidades em que o SVG foi desenhado.
+ *
+ * É necessário porque as duas coisas não vivem na mesma régua: `clientX` chega
+ * em pixels da tela, enquanto L, R e X(d) estão nas unidades do desenho. O
+ * palco do dashboard é montado num tamanho fixo e encolhido por um transform de
+ * CSS (ver SectionDeck), então subtrair um do outro erra pelo fator da escala —
+ * com o palco a 90%, o ponteiro sobre o dia 31 respondia como 28, e o erro
+ * crescia da esquerda para a direita. Em tela cheia a escala chega perto de 1 e
+ * o defeito sumia, o que o disfarçava.
+ *
+ * getScreenCTM() devolve a transformação acumulada até a tela — o scale do
+ * palco, o zoom do navegador, um viewBox, o que houver. Invertê-la dá a
+ * coordenada certa sem o código precisar saber de onde a escala veio, nem ser
+ * atualizado se ela mudar de origem.
+ */
+function pontoNoSvg(svg: SVGSVGElement, ev: { clientX: number; clientY: number }) {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) {
+    // Sem matriz (SVG ainda não exibido): a conta antiga, que vale quando não há escala.
+    const bb = svg.getBoundingClientRect();
+    return { x: ev.clientX - bb.left, y: ev.clientY - bb.top };
+  }
+  const p = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(ctm.inverse());
+  return { x: p.x, y: p.y };
+}
+
 /* Escada 1/2/2,5/5 × 10^n — funciona tanto para uma unidade isolada quanto
    para o Total Geral. */
 function eixoY(max: number) {
@@ -571,20 +598,17 @@ function GraficoAcumulado({
   const mover = (ev: React.MouseEvent<SVGRectElement>) => {
     const svg = svgRef.current;
     if (!svg) return;
-    const bb = svg.getBoundingClientRect();
-    const d = Math.max(
-      1,
-      Math.min(31, Math.round((ev.clientX - bb.left - L) / ((R - L) / 30)) + 1),
-    );
-    const my = ev.clientY - bb.top;
-    setCursor({ d, y: my });
+    const { x, y } = pontoNoSvg(svg, ev);
+    const d = Math.max(1, Math.min(31, Math.round((x - L) / ((R - L) / 30)) + 1));
+    setCursor({ d, y });
     if (!pin) {
       let perto: number | null = null;
       let dist = 1e9;
       for (const m of meses) {
         const v = curvas[m]?.[d - 1];
         if (v == null) continue;
-        const dy = Math.abs(Y(v) - my);
+        // Y(v) está nas unidades do desenho, e `y` também — ver pontoNoSvg.
+        const dy = Math.abs(Y(v) - y);
         if (dy < dist) {
           dist = dy;
           perto = m;
@@ -1245,12 +1269,9 @@ function SlideMes({
     if (!interativo) return;
     const svg = svgRef.current;
     if (!svg) return;
-    const bb = svg.getBoundingClientRect();
-    const d = Math.max(
-      1,
-      Math.min(31, Math.round((ev.clientX - bb.left - L) / ((R - L) / 30)) + 1),
-    );
-    setCursor({ d, y: ev.clientY - bb.top });
+    const { x, y } = pontoNoSvg(svg, ev);
+    const d = Math.max(1, Math.min(31, Math.round((x - L) / ((R - L) / 30)) + 1));
+    setCursor({ d, y });
   };
 
   const vAtual = cursor && curva ? curva[cursor.d - 1] : null;
