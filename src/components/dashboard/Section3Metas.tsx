@@ -89,11 +89,17 @@ const META_TARGETS: { name: string; target: number }[] = [
  */
 const RELACAO_DIZIMOS = new Set(["Pastores e Obreiros", "Pessoal"].map(norm));
 
-/* Cor da Meta, em toda parte: a barra do gráfico e os dois traços da aba de
-   dízimos. Vem da paleta da Seção 1, o mesmo azul claro de lá — e separa a Meta
-   do laranja do Realizado por matiz, não só por tom, o que sobrevive a uma
-   impressão em preto e branco e a quem enxerga cor de forma diferente. */
-const AZUL_META = "#84CDDF";
+/* Cor das colunas de Meta no gráfico. Separa a Meta do laranja do Realizado
+   por matiz, e não só por tom — o que sobrevive a uma impressão em preto e
+   branco e a quem enxerga cor de forma diferente. */
+const AZUL_META = "#2E9BC7";
+
+/* O traço da meta nas réguas do tooltip NÃO usa a cor das colunas, e isso é
+   deliberado: a régua "sobre dízimos" já é #2E9BC7, e um traço do mesmo tom
+   desapareceria dentro dela justamente quando o realizado passa da meta — o
+   caso que mais importa enxergar. Fica no azul claro da paleta, que é a única
+   das duas cores que se lê sobre as duas barras. */
+const TRACO_META = "#84CDDF";
 const ORANGE = "#e76f51";
 /* Segunda régua da aba: o realizado medido contra a arrecadação. É o mesmo azul
    que a Seção 1 usa para as entradas de crédito — e não por acaso, já que são
@@ -355,7 +361,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
                       className="absolute inset-y-[-2.5px] w-[2px] -translate-x-1/2 rounded-full"
                       style={{
                         left: `${((relacao.meta / relacao.escala) * 100).toFixed(2)}%`,
-                        background: AZUL_META,
+                        background: TRACO_META,
                       }}
                     />
                   </div>
@@ -366,7 +372,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
             <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/[.14] pt-1.5 text-[11px] text-ink-3">
               <span
                 className="inline-block h-2.5 w-[2px] shrink-0 rounded-full"
-                style={{ background: AZUL_META }}
+                style={{ background: TRACO_META }}
               />
               meta {fmtPct(relacao.meta)} — a mesma nas duas réguas
             </p>
