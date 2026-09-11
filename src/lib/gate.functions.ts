@@ -90,9 +90,7 @@ export const precisaConfigurarServer = createServerFn({ method: "GET" }).handler
 }));
 
 export const criarAdministradorServer = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) =>
-    z.object({ senha: z.string().min(MINIMO_SENHA).max(256) }).parse(d),
-  )
+  .validator((d: unknown) => z.object({ senha: z.string().min(MINIMO_SENHA).max(256) }).parse(d))
   .handler(async ({ data }) => {
     /*
      * A contagem é conferida aqui de novo, e não só na tela. A tela some sozinha
@@ -126,7 +124,7 @@ const loginSchema = z.object({
 });
 
 export const loginServer = createServerFn({ method: "POST" })
-  .inputValidator((data: unknown) => loginSchema.parse(data))
+  .validator((data: unknown) => loginSchema.parse(data))
   .handler(async ({ data }) => {
     const origem = chaveDeOrigem();
     /*

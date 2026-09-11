@@ -35,16 +35,14 @@ const loteSchema = z.object({
 });
 
 export const iniciarCargaServer = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) =>
-    z.object({ arquivos: z.array(z.string().max(300)).max(10) }).parse(d),
-  )
+  .validator((d: unknown) => z.object({ arquivos: z.array(z.string().max(300)).max(10) }).parse(d))
   .handler(async ({ data }) => {
     const sessao = await exigirAdministrador();
     return { cargaId: iniciarCarga(data.arquivos, sessao.user ?? null) };
   });
 
 export const enviarLoteServer = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => loteSchema.parse(d))
+  .validator((d: unknown) => loteSchema.parse(d))
   .handler(async ({ data }) => {
     await exigirAdministrador();
     if (data.tipo === "lancamentos") gravarLancamentos(data.cargaId, data.linhas);
@@ -54,7 +52,7 @@ export const enviarLoteServer = createServerFn({ method: "POST" })
   });
 
 export const finalizarCargaServer = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) =>
+  .validator((d: unknown) =>
     z
       .object({
         cargaId: z.number().int().positive(),

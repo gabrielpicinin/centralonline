@@ -43,7 +43,7 @@ const usuarioSchema = z
   });
 
 export const criarPastorServer = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) =>
+  .validator((d: unknown) =>
     z.object({ nome: z.string().trim().min(2).max(200), usuario: usuarioSchema }).parse(d),
   )
   .handler(async ({ data }) => {
@@ -69,7 +69,7 @@ export const criarPastorServer = createServerFn({ method: "POST" })
   });
 
 export const regerarSenhaServer = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) => z.object({ perfilId: z.number().int().positive() }).parse(d))
+  .validator((d: unknown) => z.object({ perfilId: z.number().int().positive() }).parse(d))
   .handler(async ({ data }) => {
     await exigirAdministrador();
     const perfil = buscarPorId(data.perfilId);
@@ -86,7 +86,7 @@ export const regerarSenhaServer = createServerFn({ method: "POST" })
   });
 
 export const salvarPermissoesServer = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) =>
+  .validator((d: unknown) =>
     z
       .object({
         alteracoes: z
@@ -112,7 +112,7 @@ export const salvarPermissoesServer = createServerFn({ method: "POST" })
   });
 
 export const definirAtivoServer = createServerFn({ method: "POST" })
-  .inputValidator((d: unknown) =>
+  .validator((d: unknown) =>
     z.object({ perfilId: z.number().int().positive(), ativo: z.boolean() }).parse(d),
   )
   .handler(async ({ data }) => {
