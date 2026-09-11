@@ -39,3 +39,6 @@ dist-ssr
 
 # Backups gerados por ferramentas/backup.mjs
 /backups
+
+# Copia local do plano, so para ver em localhost/plano.html. Nao faz parte do app.
+/public/plano.html
