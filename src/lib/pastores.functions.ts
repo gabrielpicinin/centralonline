@@ -11,6 +11,7 @@ import { z } from "zod";
 import {
   listarPastores,
   listarUnidades,
+  permissoesOrfas,
   criarPerfil,
   salvarPermissoes,
   definirAtivo,
@@ -24,7 +25,7 @@ import { exigirAdministrador } from "./sessao.server";
 /** Tudo o que a seção "Unidades por pastor" precisa, numa chamada. */
 export const listarPastoresServer = createServerFn({ method: "GET" }).handler(async () => {
   await exigirAdministrador();
-  return { pastores: listarPastores(), unidades: listarUnidades() };
+  return { pastores: listarPastores(), unidades: listarUnidades(), orfas: permissoesOrfas() };
 });
 
 const usuarioSchema = z
@@ -107,7 +108,7 @@ export const salvarPermissoesServer = createServerFn({ method: "POST" })
      * mostrar o que de fato ficou gravado: se algo tivesse sido descartado, o
      * administrador veria na hora em vez de sair achando que salvou.
      */
-    return { pastores: listarPastores() };
+    return { pastores: listarPastores(), orfas: permissoesOrfas() };
   });
 
 export const definirAtivoServer = createServerFn({ method: "POST" })
@@ -120,5 +121,5 @@ export const definirAtivoServer = createServerFn({ method: "POST" })
     // Mesma razão do regerar: o administrador não se desativa por engano.
     if (!perfil || perfil.papel !== "pastor") return { ok: false as const };
     definirAtivo(perfil.id, data.ativo);
-    return { ok: true as const, pastores: listarPastores() };
+    return { ok: true as const, pastores: listarPastores(), orfas: permissoesOrfas() };
   });

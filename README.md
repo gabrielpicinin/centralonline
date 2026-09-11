@@ -1,13 +1,14 @@
 # Dashboard Financeiro Central
 
-Dashboard executivo de dízimos, ofertas e despesas. Lê as bases financeira, de
-membresia e de saldo por centro de resultado em `.csv` ou `.xlsx` e monta quatro
-seções navegáveis por um trilho de miniaturas à esquerda. A base de saldo é
-opcional — sem ela o dashboard abre normalmente, só o card de saldo fica vazio.
+Dashboard executivo de dízimos, ofertas e despesas da rede Central. O Financeiro
+envia as planilhas, e cada pastor entra com a própria conta e enxerga **apenas as
+unidades liberadas para ele**.
 
-**Os dados nunca saem do navegador.** Não existe banco nem envio: os arquivos são
-lidos, processados e mantidos em memória, e se perdem ao recarregar a página. Só
-o login fala com o servidor.
+Roda num servidor da própria Central, na rede interna, acessível por VPN.
+
+> Para operar o sistema no dia a dia — backup, atualização, o que fazer quando
+> algo quebra — o documento é **[OPERACAO.md](OPERACAO.md)**. Este aqui é sobre
+> o código.
 
 ## Seções
 
@@ -19,123 +20,96 @@ o login fala com o servidor.
 | 4 — Controle de Metas | Meta contra realizado por categoria, com naturezas agrupadas |
 
 Os seis filtros do cabeçalho — Ano, Unidade, Mês, Natureza Nível 3, Projeto e
-Meta — são universais: valem para todas as seções ao mesmo tempo.
+Meta — são universais: valem para todas as seções ao mesmo tempo. Para um
+pastor, o filtro de Unidade só lista as unidades dele.
+
+## Quem entra, e por onde
+
+```
+Financeiro   login  ->  bases de dados + unidades por pastor  ->  dashboard
+Pastor       login  ->  dashboard (só as unidades dele)
+```
+
+Existe **uma** conta de administrador, chamada `Financeiro`. Ela cadastra os
+pastores, gera a senha de cada um e marca as unidades que cada um enxerga.
+
+Não há cadastro público: conta só nasce pela mão do administrador. Na primeira
+vez que o sistema sobe, sem nenhuma conta no banco, o endereço mostra a criação
+do acesso do Financeiro em vez do login — e some para sempre depois disso.
+
+## Como o recorte por unidade funciona
+
+O corte acontece **no servidor**, antes de os dados saírem. O navegador do
+pastor nunca recebe uma linha das unidades que não são dele.
+
+Toda leitura passa por uma função só, `lerBase()` em `src/lib/banco.server.ts`,
+que recebe a lista de unidades permitidas — e essa lista vem da sessão, nunca do
+cliente. É a porta única a auditar quando a pergunta for "esse pastor podia
+mesmo ver isso?".
+
+Filtrar na tela não é proteção: quem abre o painel do desenvolvedor lê o que foi
+baixado, escondido ou não.
 
 ## Rodando localmente
 
-Precisa de Node.js. As dependências são instaladas uma vez:
-
 ```bash
 npm install
-```
-
-Copie `.env.example` para `.env` e preencha os três valores (veja abaixo como
-gerar o `SESSION_SECRET`). Depois:
-
-```bash
+cp .env.example .env      # preencha o SESSION_SECRET
 npm run dev
 ```
 
-## Segredos
+Abra `http://localhost:8080`. Sem nenhuma conta no banco, a primeira tela é a de
+criação do acesso do Financeiro.
 
-Três variáveis controlam o acesso, e **nenhuma delas vive no código**:
-
-| Variável | O que é |
-|---|---|
-| `SITE_USERNAME` | Usuário do login |
-| `SITE_PASSWORD` | Senha do login |
-| `SESSION_SECRET` | Chave que cifra o cookie de sessão. Mínimo de 32 caracteres |
-
-Gere o `SESSION_SECRET` aleatoriamente, nunca à mão:
+Gerar o `SESSION_SECRET`:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### Onde cada ambiente lê
+## Testes
 
-**No seu computador** elas vêm do arquivo `.env` na raiz. Ele está no
-`.gitignore` e não deve ser versionado nunca. Copie o `.env.example` e preencha.
+```bash
+npm test
+```
 
-**No site publicado** quem hospeda é o **Lovable** — o app roda em
-`centralonline.lovable.app`. As três variáveis são definidas lá, dentro do
-projeto no Lovable, e é lá que se trocam. Não há nada a fazer pela linha de
-comando.
+Sete testes, todos sobre a mesma coisa: garantir que um pastor nunca receba uma
+unidade que não é dele. Sem dependência — o Node 24 executa TypeScript e traz o
+próprio executor.
 
-> O projeto traz um `wrangler.jsonc` herdado do modelo TanStack Start. Ele
-> **não é usado**: ninguém publica este app na Cloudflare a partir daqui.
-> Ignore instruções de `wrangler secret put` — elas mirariam uma conta
-> Cloudflare própria, que não é onde o site está no ar, e um `wrangler deploy`
-> criaria uma segunda cópia separada em vez de atualizar o site.
+**Rode antes de publicar.** Se algum falhar, não publique.
 
-Se alguma variável faltar, o servidor recusa o login e escreve no log qual é a
-ausente — em vez de devolver um erro mudo.
-
-### Trocar a senha
-
-Troque no projeto do Lovable, no mesmo lugar onde as variáveis estão definidas,
-e publique de novo. Troque `SESSION_SECRET` junto se quiser derrubar todas as
-sessões abertas e obrigar todo mundo a entrar com a senha nova.
-
-Lembre de atualizar também o seu `.env` local, senão o login para de funcionar
-no `npm run dev`.
-
-## Publicar
-
-O site é publicado pelo **Lovable**, a partir da branch `main` deste
-repositório. O fluxo é: comitar e enviar para o GitHub, abrir o projeto no
-Lovable, deixar ele puxar as mudanças e publicar.
-
-Para conferir se o build passa antes de enviar:
+## Compilando para o servidor
 
 ```bash
 npm run build
+node .output/server/index.mjs
 ```
 
-## Estrutura
+O build mira `node-server`. Um servidor Node comum, sem dependência de
+plataforma.
 
-```
-src/
-  components/
-    Login.tsx, Upload.tsx        fluxo antes do dashboard
-    Dashboard.tsx                cabeçalho, filtros universais e composição das seções
-    dashboard/
-      SectionDeck.tsx            trilho de miniaturas e palco
-      Section1Total.tsx          Seção 1
-      EntradasDiarias.tsx        Seção 2
-      Section2Despesas.tsx       Seção 3
-      Section3Metas.tsx          Seção 4
-      secaoAtiva.tsx             adia o trabalho das seções fora do palco
-  lib/
-    parsers.ts                   leitura e normalização das planilhas
-    gate.functions.ts            login, sessão e freio de força bruta
-    appState.tsx                 estado da aplicação em memória
-```
+## Onde as coisas estão
 
-## Formato das planilhas
+| | |
+|---|---|
+| `src/lib/banco.server.ts` | O único arquivo que fala SQL. `lerBase()` é a porta única de leitura. |
+| `src/lib/sessao.server.ts` | Quem está do outro lado, e quais unidades pode ver. |
+| `src/lib/gate.functions.ts` | Primeira execução, login, saída. |
+| `src/lib/pastores.functions.ts` | Cadastro de pastores, senhas e permissões. |
+| `src/lib/parsers.ts` | Leitura e normalização das planilhas, no navegador. |
+| `src/components/Upload.tsx` | A tela do administrador: bases em cima, unidades embaixo. |
+| `src/components/dashboard/` | As quatro seções e o trilho que as troca. |
+| `ferramentas/` | Backup e a chave reserva de senha, para o TI. |
+| `testes/` | O teste do recorte. |
 
-**Base financeira** — as colunas são encontradas por nome, tolerando variações
-de acento e caixa:
+## Banco de dados
 
-`Descrição CR. 1º Nível` (unidade) · `Descrição Nat. 2º/3º/4º Nível` ·
-`Razão Social Parceiro` · `Nome Projeto` · `Meta` · `Crédito` · `Débito` ·
-`Dia/Mês/Ano Baixa` · `Nro. Único Financeiro`
+SQLite, embutido no próprio Node — nenhuma dependência, nenhum serviço para o TI
+manter. Um arquivo em `dados/central.db`, ou no caminho de `DADOS_DIR`.
 
-As metas vêm de uma coluna por unidade, com o valor **anual**:
-`Meta Anual <Unidade>`, mais `Meta Anual Total Geral` com o consolidado. O
-consolidado é lido à parte, nunca somado com as unidades — ele já é a soma
-delas. A meta mensal é essa anual dividida por 12.
+Contas, senhas, permissões e as bases enviadas estão todas ali. **É a única
+pasta que precisa de backup**, e o jeito certo de fazê-lo está no
+[OPERACAO.md](OPERACAO.md) — copiar o arquivo com o sistema no ar não é seguro.
 
-**Base de membresia** — coluna `Unidades` e uma coluna por mês no formato
-`jan/26`, `fev/26`, e assim por diante.
-
-**Base de saldo por centro de resultado** — opcional. Três colunas:
-
-`Descrição CR. 1º Nível` (unidade) · `Período` · `Saldo Acumulado`
-
-O `Período` aceita tanto uma competência (`jan/26`, `01/01/2026`) quanto a
-palavra `Atual`. O card da Seção 1 mostra duas linhas: a competência mais antiga
-da base — que é a abertura do exercício, e por isso acompanha a virada do ano
-sem ninguém editar código — e o saldo `Atual`. Linhas com `Período` em branco ou
-irreconhecível são descartadas. Diferente das outras bases, esta responde apenas
-ao filtro de unidade: mês e natureza não fazem sentido sobre um saldo acumulado.
+As tabelas são criadas sozinhas na primeira partida.

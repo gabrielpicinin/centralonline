@@ -39,6 +39,7 @@ function conectar(): DatabaseSync {
   conexao.exec("PRAGMA journal_mode = WAL");
   conexao.exec("PRAGMA foreign_keys = ON");
   aplicarEsquema(conexao);
+  migrar(conexao);
   db = conexao;
   return conexao;
 }
@@ -51,6 +52,7 @@ function aplicarEsquema(c: DatabaseSync) {
       enviada_por TEXT,
       arquivos    TEXT,
       ativa       INTEGER NOT NULL DEFAULT 0,
+      concluida   INTEGER NOT NULL DEFAULT 0,
       linhas      INTEGER NOT NULL DEFAULT 0
     );
 
@@ -143,6 +145,27 @@ function aplicarEsquema(c: DatabaseSync) {
 export function fechar() {
   db?.close();
   db = null;
+}
+
+/*
+ * Ajustes de esquema em bancos que já existem.
+ *
+ * CREATE TABLE IF NOT EXISTS não acrescenta coluna a uma tabela já criada, então
+ * cada mudança precisa vir também por aqui. Roda a cada partida e é idempotente:
+ * o que já está no lugar é ignorado.
+ */
+function migrar(c: DatabaseSync) {
+  const colunas = (tabela: string) =>
+    (c.prepare(`PRAGMA table_info(${tabela})`).all() as { name: string }[]).map((r) => r.name);
+
+  if (!colunas("cargas").includes("concluida")) {
+    c.exec("ALTER TABLE cargas ADD COLUMN concluida INTEGER NOT NULL DEFAULT 0");
+    /*
+     * Cargas que já existiam e tinham linhas foram, por definição, finalizadas:
+     * só finalizarCarga preenche esse campo.
+     */
+    c.exec("UPDATE cargas SET concluida = 1 WHERE linhas > 0 OR ativa = 1");
+  }
 }
 
 /** Nome reservado para a linha consolidada da planilha de metas. */
@@ -287,7 +310,10 @@ export function finalizarCarga(cargaId: number): ResumoCarga {
   c.exec("BEGIN");
   try {
     c.prepare("UPDATE cargas SET ativa = 0").run();
-    c.prepare("UPDATE cargas SET ativa = 1, linhas = ? WHERE id = ?").run(n, cargaId);
+    c.prepare("UPDATE cargas SET ativa = 1, concluida = 1, linhas = ? WHERE id = ?").run(
+      n,
+      cargaId,
+    );
     c.prepare(
       `INSERT INTO unidades (nome, vista_em)
        SELECT DISTINCT unidade, ? FROM lancamentos WHERE carga_id = ? AND unidade <> ''
@@ -304,18 +330,34 @@ export function finalizarCarga(cargaId: number): ResumoCarga {
 }
 
 /*
- * Mantém a ativa e a anterior. A de antes dela é descartada: a anterior existe
- * como rede contra um arquivo errado, e duas gerações de rede não acrescentam
- * nada além de disco ocupado.
+ * Mantém as duas últimas cargas CONCLUÍDAS, e descarta as inacabadas.
+ *
+ * A distinção não é preciosismo. Um envio que morre no meio — o navegador do
+ * administrador fechou, a rede caiu — deixa para trás uma carga com parte das
+ * linhas e sem nunca ter sido finalizada. Antes, a poda contava por id e não
+ * por conclusão: uma carga quebrada ocupava uma das duas vagas e empurrava para
+ * fora o último envio BOM. A rede de segurança contra arquivo errado virava
+ * lixo, sem nenhum aviso.
+ *
+ * Agora as vagas são das concluídas, e as inacabadas anteriores à ativa somem —
+ * elas não servem para nada e só ocupam disco.
  */
 function podarCargasAntigas() {
   const c = conectar();
-  const manter = c.prepare("SELECT id FROM cargas ORDER BY id DESC LIMIT 2").all() as {
-    id: number;
-  }[];
-  if (manter.length < 2) return;
-  const menor = Math.min(...manter.map((r) => r.id));
-  c.prepare("DELETE FROM cargas WHERE id < ?").run(menor);
+  const concluidas = c
+    .prepare("SELECT id FROM cargas WHERE concluida = 1 ORDER BY id DESC LIMIT 2")
+    .all() as { id: number }[];
+  if (!concluidas.length) return;
+
+  const menorMantida = Math.min(...concluidas.map((r) => r.id));
+  c.prepare("DELETE FROM cargas WHERE id < ?").run(menorMantida);
+  /*
+   * Inacabadas entre as mantidas também saem — é o caso do envio que falhou
+   * depois do último bom e antes deste.
+   */
+  c.prepare("DELETE FROM cargas WHERE concluida = 0 AND id < ?").run(
+    Math.max(...concluidas.map((r) => r.id)),
+  );
 }
 
 /* ============================ perfis ============================ */
@@ -526,12 +568,49 @@ export function cargaAtiva(): ResumoCarga | null {
   };
 }
 
-/** Todas as unidades já vistas em qualquer envio, em ordem alfabética. */
+/**
+ * As unidades que a base ATIVA contém — as únicas que podem mostrar algum dado.
+ *
+ * Não é a tabela `unidades`, que acumula tudo o que já passou por aqui. A
+ * diferença aparece quando uma igreja fecha: o nome dela continua no histórico,
+ * mas oferecê-lo na tela de permissões faria o administrador marcar uma unidade
+ * que não existe mais, e o pastar abriria um dashboard vazio sem ninguém
+ * conseguir explicar por quê.
+ *
+ * A tabela `unidades` continua existindo para o histórico e para reconhecer
+ * permissões que ficaram apontando para o vazio — ver `permissoesOrfas`.
+ */
 export function listarUnidades(): string[] {
   const c = conectar();
-  return (c.prepare("SELECT nome FROM unidades ORDER BY nome").all() as { nome: string }[]).map(
-    (r) => r.nome,
-  );
+  const carga = cargaAtiva();
+  if (!carga) return [];
+  return (
+    c
+      .prepare(
+        "SELECT DISTINCT unidade FROM lancamentos WHERE carga_id = ? AND unidade <> '' ORDER BY unidade",
+      )
+      .all(carga.id) as { unidade: string }[]
+  ).map((r) => r.unidade);
+}
+
+/**
+ * Permissões que apontam para unidades ausentes da base ativa.
+ *
+ * Um pastor nesta lista abre o dashboard e não vê nada — e essa é a pergunta de
+ * suporte mais provável do sistema. Mostrá-la na tela transforma um mistério
+ * numa linha de texto.
+ */
+export function permissoesOrfas(): { perfilId: number; unidade: string }[] {
+  const c = conectar();
+  const vivas = new Set(listarUnidades());
+  return (
+    c.prepare("SELECT perfil_id, unidade FROM permissoes").all() as {
+      perfil_id: number;
+      unidade: string;
+    }[]
+  )
+    .filter((r) => !vivas.has(r.unidade))
+    .map((r) => ({ perfilId: r.perfil_id, unidade: r.unidade }));
 }
 
 export interface BaseCompleta {

@@ -78,7 +78,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         content:
           "Executive Insights is a financial web app for generating interactive executive dashboards from uploaded data.",
       },
-      { name: "author", content: "Lovable" },
+      { name: "author", content: "Central" },
       { property: "og:title", content: "Dash" },
       {
         property: "og:description",
@@ -87,7 +87,6 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
       { name: "twitter:title", content: "Dash" },
       {
         name: "twitter:description",

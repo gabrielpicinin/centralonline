@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LogOut, Calendar, FilterX, SlidersHorizontal } from "lucide-react";
+import { LogOut, Calendar, FilterX, SlidersHorizontal, FolderOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -328,6 +328,66 @@ export function Dashboard() {
       ano,
     ],
   );
+
+  /*
+   * Sem nenhuma linha, o dashboard desenharia uma parede de zeros — e quem
+   * olhasse não saberia se o sistema está quebrado, se a base não foi enviada
+   * ou se ele não tem permissão. Um recado explicando custa menos do que a
+   * ligação que o silêncio geraria.
+   */
+  if (!financial.length) {
+    return (
+      <div className="flex h-screen flex-col bg-background">
+        <header className="flex items-center justify-between gap-4 border-b border-line-soft bg-panel px-6 py-3">
+          <div className="flex items-center gap-3">
+            <LogoCentral className="h-7 w-7" />
+            <span className="text-[15px] font-semibold tracking-tight text-ink">
+              Dashboard Financeiro Central
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="hidden text-sm text-ink-2 sm:inline">{user}</span>
+            {papel === "admin" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStep("upload")}
+                className="gap-2 border-line-strong bg-panel-2 text-ink hover:border-acc hover:bg-panel-2 hover:text-ink"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                <span className="hidden sm:inline">Bases e permissões</span>
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={signOut}
+              className="gap-2 text-ink-2 hover:bg-panel-2 hover:text-ink"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Sair</span>
+            </Button>
+          </div>
+        </header>
+
+        <div className="grid flex-1 place-content-center px-6">
+          <div className="max-w-md text-center">
+            <div className="mx-auto mb-4 grid h-12 w-12 place-content-center rounded-xl bg-panel-2 text-ink-3">
+              <FolderOpen className="h-6 w-6" />
+            </div>
+            <h1 className="text-xl font-semibold tracking-tight text-ink">
+              Nenhum dado para mostrar
+            </h1>
+            <p className="mt-2 text-[15px] leading-relaxed text-ink-2">
+              {papel === "admin"
+                ? "Ainda não há base de dados no servidor. Envie as planilhas em “Bases e permissões” para o dashboard aparecer."
+                : "Nenhuma unidade foi liberada para o seu acesso ainda, ou a base do período ainda não foi enviada. Fale com o Financeiro da Central."}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     /*

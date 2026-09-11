@@ -7,7 +7,16 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { KeyRound, UserPlus, Check, Copy, Ban, RotateCcw, Loader2 } from "lucide-react";
+import {
+  KeyRound,
+  UserPlus,
+  Check,
+  Copy,
+  Ban,
+  RotateCcw,
+  Loader2,
+  AlertTriangle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +43,12 @@ const iguais = (a: string[], b: string[]) => a.length === b.length && a.every((v
 export function UnidadesPorPastor() {
   const [pastores, setPastores] = useState<Pastor[]>([]);
   const [unidades, setUnidades] = useState<string[]>([]);
+  /*
+   * Permissões apontando para unidades que a base atual não tem mais. Quem está
+   * nesta lista abre o dashboard e não vê nada — e sem este aviso ninguém
+   * descobriria o motivo.
+   */
+  const [orfas, setOrfas] = useState<{ perfilId: number; unidade: string }[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -63,6 +78,7 @@ export function UnidadesPorPastor() {
     const r = await listar();
     setPastores(r.pastores);
     setUnidades(r.unidades);
+    setOrfas(r.orfas);
     setRascunho({});
   }, [listar]);
 
@@ -94,6 +110,8 @@ export function UnidadesPorPastor() {
 
   const unidadesDe = (p: Pastor) => rascunho[p.id] ?? p.unidades;
 
+  const orfasDe = (p: Pastor) => orfas.filter((o) => o.perfilId === p.id).map((o) => o.unidade);
+
   const marcar = (p: Pastor, novas: string[]) =>
     setRascunho((r) => ({ ...r, [p.id]: [...novas].sort() }));
 
@@ -107,6 +125,7 @@ export function UnidadesPorPastor() {
         },
       });
       setPastores(r.pastores);
+      setOrfas(r.orfas);
       setRascunho({});
     } catch {
       setErro("Não consegui salvar. Nada foi alterado — tente de novo.");
@@ -154,7 +173,10 @@ export function UnidadesPorPastor() {
     if (!confirm(`Deseja ${acao} o acesso de ${p.nome}?`)) return;
     try {
       const r = await definirAtivo({ data: { perfilId: p.id, ativo: !p.ativo } });
-      if (r.ok) setPastores(r.pastores);
+      if (r.ok) {
+        setPastores(r.pastores);
+        setOrfas(r.orfas);
+      }
     } catch {
       setErro(`Não consegui ${acao} a conta.`);
     }
@@ -178,6 +200,27 @@ export function UnidadesPorPastor() {
         Marque as unidades que cada pastor poderá ver no dashboard. As mudanças passam a valer
         quando você salvar.
       </p>
+
+      {orfas.length > 0 && (
+        <div className="mb-5 flex gap-3 rounded-xl border border-[#E9B949]/40 bg-[#E9B949]/[.08] p-4">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-[#E9B949]" />
+          <div className="text-sm text-ink-2">
+            <p className="font-semibold text-ink">
+              {orfas.length === 1
+                ? "Uma permissão aponta para uma unidade que a base atual não tem"
+                : `${orfas.length} permissões apontam para unidades que a base atual não tem`}
+            </p>
+            <p className="mt-1">
+              Quem estiver marcado nelas abre o dashboard e não vê nada. Costuma acontecer quando
+              uma unidade muda de nome ou deixa de aparecer na planilha. Remarque as unidades certas
+              nas linhas destacadas abaixo e salve.
+            </p>
+            <p className="mt-1.5 font-mono text-xs text-ink-3">
+              {[...new Set(orfas.map((o) => o.unidade))].join(" · ")}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* A senha aparece aqui, uma vez. Fica em cima para não passar despercebida. */}
       {senhaMostrada && (
@@ -268,6 +311,7 @@ export function UnidadesPorPastor() {
         ) : (
           pastores.map((p) => {
             const pendente = pendentes.includes(p.id);
+            const semBase = orfasDe(p);
             return (
               <div
                 key={p.id}
@@ -285,6 +329,11 @@ export function UnidadesPorPastor() {
                     )}
                   </p>
                   <p className="truncate font-mono text-xs text-ink-3">{p.usuario}</p>
+                  {semBase.length > 0 && (
+                    <p className="mt-0.5 truncate text-xs text-[#E9B949]">
+                      fora da base atual: {semBase.join(", ")}
+                    </p>
+                  )}
                 </div>
 
                 <MultiSelect
@@ -293,7 +342,9 @@ export function UnidadesPorPastor() {
                   onChange={(novas) => marcar(p, novas)}
                   allLabel="Todas as unidades"
                   noneLabel="Nenhuma unidade"
-                  triggerClassName={pendente ? "border-acc" : ""}
+                  triggerClassName={
+                    pendente ? "border-acc" : semBase.length ? "border-[#E9B949]/60" : ""
+                  }
                   popoverWidthClass="w-80"
                 />
 

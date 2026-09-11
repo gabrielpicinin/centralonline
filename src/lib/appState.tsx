@@ -21,17 +21,8 @@ interface AppState {
   membership: MembershipRow[];
   /** Saldo por centro de resultado. Base opcional: pode vir vazia. */
   saldo: SaldoRow[];
-  metaPorUnidade: Record<string, number>;
   metaAnualPorUnidade: Record<string, number>;
   metaAnualTotalGeral: number;
-  setData: (
-    f: FinancialRow[],
-    m: MembershipRow[],
-    s: SaldoRow[],
-    meta: Record<string, number>,
-    metaAnual: Record<string, number>,
-    metaAnualTotal: number,
-  ) => void;
   /**
    * Busca as bases no servidor e as coloca em memória.
    *
@@ -52,7 +43,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [financial, setFinancial] = useState<FinancialRow[]>([]);
   const [membership, setMembership] = useState<MembershipRow[]>([]);
   const [saldo, setSaldo] = useState<SaldoRow[]>([]);
-  const [metaPorUnidade, setMeta] = useState<Record<string, number>>({});
   const [metaAnualPorUnidade, setMetaAnual] = useState<Record<string, number>>({});
   const [metaAnualTotalGeral, setMetaAnualTotal] = useState(0);
 
@@ -79,14 +69,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSaldo(base.saldo);
     setMetaAnual(base.metaAnualPorUnidade);
     setMetaAnualTotal(base.metaAnualTotalGeral);
-    /*
-     * A meta MENSAL por unidade é a anual dividida por doze — derivada, não
-     * guardada. Uma segunda cópia no banco só criaria a chance de as duas
-     * discordarem.
-     */
-    const mensal: Record<string, number> = {};
-    for (const [nome, anual] of Object.entries(base.metaAnualPorUnidade)) mensal[nome] = anual / 12;
-    setMeta(mensal);
     return { vazio: financial.length === 0 };
   };
 
@@ -109,11 +91,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setStepRaw("login");
       return;
     }
-    // For upload/dashboard, verify the server session before allowing it.
+    /*
+     * Passos além do login passam pelo servidor. A tela de bases exige também
+     * ser administrador: o comentário anterior dizia só "verifica a sessão", e
+     * com isso um pastor podia chegar à tela do administrador e encontrar tudo
+     * falhando — as funções de lá recusam, mas a tela não deveria abrir.
+     */
     getSessionServer()
       .then((res) => {
-        if (res.unlocked) {
+        if (res.unlocked && (s !== "upload" || res.papel === "admin")) {
           setStepRaw(s);
+        } else if (res.unlocked) {
+          setStepRaw("dashboard");
         } else {
           setUser(null);
           setStepRaw("login");
@@ -136,7 +125,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setFinancial([]);
     setMembership([]);
     setSaldo([]);
-    setMeta({});
     setMetaAnual({});
     setMetaAnualTotal(0);
     setStepRaw("login");
@@ -154,17 +142,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         financial,
         membership,
         saldo,
-        metaPorUnidade,
         metaAnualPorUnidade,
         metaAnualTotalGeral,
-        setData: (f, m, s, meta, metaAnual, metaAnualTotal) => {
-          setFinancial(f);
-          setMembership(m);
-          setSaldo(s);
-          setMeta(meta);
-          setMetaAnual(metaAnual);
-          setMetaAnualTotal(metaAnualTotal);
-        },
         carregarDoServidor,
         signOut,
       }}
