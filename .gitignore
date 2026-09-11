@@ -33,3 +33,6 @@ dist-ssr
 
 # Local env
 .env
+
+# Banco de dados local. No servidor da Central esta pasta e o que entra no backup.
+/dados

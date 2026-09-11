@@ -1,9 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { useSession, getRequest } from "@tanstack/react-start/server";
+import { getSessionConfig, type DadosSessao } from "./sessao.server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-
-type GateSession = { unlocked?: boolean; user?: string };
 
 /*
  * As três variáveis nunca vivem no código nem no bundle — são lidas do ambiente
@@ -14,7 +13,7 @@ type GateSession = { unlocked?: boolean; user?: string };
  * A mensagem diz onde procurar. Sem ela, um ambiente sem as variáveis devolve
  * 500 em toda tela de login, sem nenhuma pista do motivo.
  */
-function exigir(nome: "SITE_USERNAME" | "SITE_PASSWORD" | "SESSION_SECRET"): string {
+function exigir(nome: "SITE_USERNAME" | "SITE_PASSWORD"): string {
   const valor = process.env[nome];
   if (!valor) {
     console.error(
@@ -24,37 +23,6 @@ function exigir(nome: "SITE_USERNAME" | "SITE_PASSWORD" | "SESSION_SECRET"): str
     throw new Error("Internal server error");
   }
   return valor;
-}
-
-function getSessionConfig() {
-  const password = exigir("SESSION_SECRET");
-  /*
-   * A cifragem de sessão do h3 exige 32 caracteres. Abaixo disso ela falha lá
-   * dentro, com um erro que não aponta para a causa.
-   */
-  if (password.length < 32) {
-    console.error(
-      "[gate] SESSION_SECRET tem menos de 32 caracteres; a sessão não pode ser cifrada",
-    );
-    throw new Error("Internal server error");
-  }
-  return {
-    password,
-    name: "central-gate",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-    cookie: {
-      httpOnly: true,
-      secure: true,
-      /*
-       * "lax", não "none". "none" manda o cookie de sessão junto em requisições
-       * vindas de outros sites, que é a porta de entrada de CSRF; só faz sentido
-       * quando a página precisa rodar dentro de um iframe de outro domínio, e
-       * este dashboard é autônomo.
-       */
-      sameSite: "lax" as const,
-      path: "/",
-    },
-  };
 }
 
 /*
@@ -142,19 +110,19 @@ export const loginServer = createServerFn({ method: "POST" })
     }
 
     tentativas.delete(origem);
-    const session = await useSession<GateSession>(getSessionConfig());
+    const session = await useSession<DadosSessao>(getSessionConfig());
     await session.update({ unlocked: true, user: expectedUser });
     return { ok: true as const, user: expectedUser };
   });
 
 export const getSessionServer = createServerFn({ method: "GET" }).handler(async () => {
-  const session = await useSession<GateSession>(getSessionConfig());
+  const session = await useSession<DadosSessao>(getSessionConfig());
   if (!session.data.unlocked) return { unlocked: false as const };
   return { unlocked: true as const, user: session.data.user ?? null };
 });
 
 export const logoutServer = createServerFn({ method: "POST" }).handler(async () => {
-  const session = await useSession<GateSession>(getSessionConfig());
+  const session = await useSession<DadosSessao>(getSessionConfig());
   await session.clear();
   return { ok: true as const };
 });

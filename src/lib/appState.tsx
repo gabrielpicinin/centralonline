@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 import type { FinancialRow, MembershipRow, SaldoRow } from "./parsers";
 import { getSessionServer, logoutServer } from "./gate.functions";
+import { carregarBaseServer } from "./dados.functions";
 
 type Step = "login" | "upload" | "dashboard";
 
@@ -24,6 +25,14 @@ interface AppState {
     metaAnual: Record<string, number>,
     metaAnualTotal: number,
   ) => void;
+  /**
+   * Busca as bases no servidor e as coloca em memória.
+   *
+   * O recorte por unidade não é decidido aqui: o servidor devolve só o que a
+   * sessão de quem pediu pode ver. Do ponto de vista do dashboard, a base
+   * simplesmente é menor — nenhuma seção precisa saber que existe um recorte.
+   */
+  carregarDoServidor: () => Promise<{ vazio: boolean }>;
   signOut: () => Promise<void>;
 }
 
@@ -38,6 +47,40 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [metaPorUnidade, setMeta] = useState<Record<string, number>>({});
   const [metaAnualPorUnidade, setMetaAnual] = useState<Record<string, number>>({});
   const [metaAnualTotalGeral, setMetaAnualTotal] = useState(0);
+
+  const carregarDoServidor = async () => {
+    const base = await carregarBaseServer();
+    /*
+     * As seções chamam getMonth() em `data`, então ela precisa chegar como Date
+     * e não como texto. Medido: a serialização do TanStack Start já preserva o
+     * tipo, e getMonth() funciona sem tocar em nada.
+     *
+     * A guarda abaixo fica assim mesmo — mas só como guarda, sem custo no
+     * caminho normal. Se um dia a serialização mudar, 20 mil linhas viram
+     * string de uma vez e todos os gráficos de mês quebram juntos; o teste é um
+     * `instanceof` numa linha, e a conversão só roda se ele falhar.
+     */
+    const precisaReviver =
+      base.financial.some((r) => r.data) &&
+      !(base.financial.find((r) => r.data)!.data instanceof Date);
+    const financial = precisaReviver
+      ? base.financial.map((r) => ({ ...r, data: r.data ? new Date(r.data) : null }))
+      : base.financial;
+    setFinancial(financial);
+    setMembership(base.membership);
+    setSaldo(base.saldo);
+    setMetaAnual(base.metaAnualPorUnidade);
+    setMetaAnualTotal(base.metaAnualTotalGeral);
+    /*
+     * A meta MENSAL por unidade é a anual dividida por doze — derivada, não
+     * guardada. Uma segunda cópia no banco só criaria a chance de as duas
+     * discordarem.
+     */
+    const mensal: Record<string, number> = {};
+    for (const [nome, anual] of Object.entries(base.metaAnualPorUnidade)) mensal[nome] = anual / 12;
+    setMeta(mensal);
+    return { vazio: financial.length === 0 };
+  };
 
   /*
    * Toda carga de página começa no login, mesmo com o cookie de sessão ainda
@@ -111,6 +154,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setMetaAnual(metaAnual);
           setMetaAnualTotal(metaAnualTotal);
         },
+        carregarDoServidor,
         signOut,
       }}
     >

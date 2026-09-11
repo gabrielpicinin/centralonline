@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { UploadCloud, FileSpreadsheet, CheckCircle2, Users, DollarSign, Scale } from "lucide-react";
+import {
+  UploadCloud,
+  FileSpreadsheet,
+  CheckCircle2,
+  Users,
+  DollarSign,
+  Scale,
+  Database,
+  ArrowRight,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/appState";
 import { normalizeFinancial, normalizeMembership, normalizeSaldo, parseFile } from "@/lib/parsers";
+import { enviarBases } from "@/lib/enviarBase";
+import { estadoServer } from "@/lib/dados.functions";
 
 interface DropProps {
   label: string;
@@ -68,13 +79,27 @@ function DropZone({ label, hint, icon, file, onFile }: DropProps) {
   );
 }
 
+interface EstadoBase {
+  enviadaEm: string;
+  enviadaPor: string | null;
+  linhas: number;
+}
+
 export function Upload() {
-  const { setStep, setData, user } = useApp();
+  const { setStep, carregarDoServidor, user } = useApp();
   const [financeiroFile, setFinanceiro] = useState<File | null>(null);
   const [membresiaFile, setMembresia] = useState<File | null>(null);
   const [saldoFile, setSaldo] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [progresso, setProgresso] = useState(0);
   const [err, setErr] = useState("");
+  /*
+   * A base que já está no servidor, se houver. É o que dispensa o administrador
+   * de reenviar tudo só para chegar ao dashboard: antes, sem upload não havia
+   * dados, e agora eles estão gravados.
+   */
+  const [baseAtual, setBaseAtual] = useState<EstadoBase | null>(null);
+  const [indoParaODashboard, setIndo] = useState(false);
 
   /*
    * O saldo não entra aqui: é base opcional. Exigi-la impediria de abrir o
@@ -91,6 +116,24 @@ export function Upload() {
   useEffect(() => {
     void import("@/components/Dashboard");
   }, []);
+
+  useEffect(() => {
+    void estadoServer()
+      .then((e) => setBaseAtual(e.carga))
+      .catch(() => setBaseAtual(null));
+  }, []);
+
+  const irParaODashboard = useCallback(async () => {
+    setIndo(true);
+    setErr("");
+    try {
+      await carregarDoServidor();
+      setStep("dashboard");
+    } catch {
+      setErr("Não consegui carregar a base que está no servidor.");
+      setIndo(false);
+    }
+  }, [carregarDoServidor, setStep]);
 
   const handleGenerate = useCallback(async () => {
     if (!financeiroFile || !membresiaFile) return;
@@ -111,21 +154,35 @@ export function Upload() {
           'Base de saldo sem linhas válidas — confira as colunas "Período" e "Saldo Acumulado"',
         );
       }
-      setData(
-        fin.rows,
-        mem,
-        sal,
-        fin.metaPorUnidade,
-        fin.metaAnualPorUnidade,
-        fin.metaAnualTotalGeral,
+      /*
+       * Grava no servidor e só então lê de volta, em vez de aproveitar o que
+       * acabou de ser interpretado aqui. O ida e volta custa alguns segundos
+       * numa rede local e paga por si: se algo tivesse se perdido na gravação,
+       * o administrador descobriria agora, e não no dia seguinte pela boca de
+       * um pastor.
+       */
+      await enviarBases(
+        {
+          arquivos: [financeiroFile.name, membresiaFile.name, saldoFile?.name].filter(
+            Boolean,
+          ) as string[],
+          financial: fin.rows,
+          membership: mem,
+          saldo: sal,
+          metaAnualPorUnidade: fin.metaAnualPorUnidade,
+          metaAnualTotalGeral: fin.metaAnualTotalGeral,
+        },
+        setProgresso,
       );
+      await carregarDoServidor();
       setStep("dashboard");
     } catch (e) {
       setErr((e as Error).message ?? "Erro ao processar arquivos");
+      setProgresso(0);
     } finally {
       setLoading(false);
     }
-  }, [financeiroFile, membresiaFile, saldoFile, setData, setStep]);
+  }, [financeiroFile, membresiaFile, saldoFile, carregarDoServidor, setStep]);
 
   return (
     <div className="min-h-screen bg-background p-6 md:p-10">
@@ -140,6 +197,37 @@ export function Upload() {
             o dashboard abre normalmente e só o card de saldo fica vazio.
           </p>
         </motion.div>
+
+        {baseAtual && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-line-soft bg-panel px-5 py-4 shadow-panel"
+          >
+            <div className="flex items-center gap-3.5">
+              <div className="grid h-10 w-10 shrink-0 place-content-center rounded-lg bg-pos/15 text-pos">
+                <Database className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-[15px] font-semibold text-ink">Já existe uma base no servidor</p>
+                <p className="text-sm text-ink-2">
+                  Enviada em {new Date(baseAtual.enviadaEm).toLocaleDateString("pt-BR")}
+                  {baseAtual.enviadaPor ? " por " + baseAtual.enviadaPor : ""} ·{" "}
+                  {baseAtual.linhas.toLocaleString("pt-BR")} lançamentos
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              disabled={loading || indoParaODashboard}
+              onClick={irParaODashboard}
+              className="gap-2 border-line-strong bg-panel-2 text-ink hover:border-acc hover:bg-panel-2 hover:text-ink"
+            >
+              {indoParaODashboard ? "Abrindo…" : "Ir para o dashboard"}
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </motion.div>
+        )}
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <DropZone
@@ -171,14 +259,29 @@ export function Upload() {
           </div>
         )}
 
+        {loading && (
+          <div className="mt-8">
+            <div className="mb-2 flex items-baseline justify-between text-sm">
+              <span className="text-ink-2">Gravando no servidor…</span>
+              <span className="tabular-nums text-ink-3">{Math.round(progresso * 100)}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-line-soft">
+              <div
+                className="h-full rounded-full bg-acc transition-[width] duration-200"
+                style={{ width: Math.max(3, progresso * 100) + "%" }}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="mt-8 flex justify-end">
           <Button
-            disabled={!ready || loading}
+            disabled={!ready || loading || indoParaODashboard}
             onClick={handleGenerate}
             className="h-12 px-8 bg-acc text-background font-semibold hover:brightness-110 shadow-panel transition-all disabled:opacity-40 disabled:shadow-none"
           >
             <UploadCloud className="h-5 w-5" />
-            {loading ? "Processando..." : "Gerar Dashboard"}
+            {loading ? "Enviando…" : baseAtual ? "Substituir base e abrir" : "Gerar Dashboard"}
           </Button>
         </div>
       </div>
