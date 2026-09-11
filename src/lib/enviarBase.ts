@@ -6,11 +6,7 @@
  * motivo para movê-lo. O que muda é o destino do resultado, que antes era a
  * memória do React e agora é o banco.
  */
-import {
-  iniciarCargaServer,
-  enviarLoteServer,
-  finalizarCargaServer,
-} from "./dados.functions";
+import { iniciarCargaServer, enviarLoteServer, finalizarCargaServer } from "./dados.functions";
 import type { FinancialRow, MembershipRow, SaldoRow } from "./parsers";
 
 /*
@@ -43,10 +39,7 @@ export interface BasesParaEnviar {
  * e não só os lançamentos, para a barra não ficar parada nos 100% enquanto a
  * membresia e os saldos ainda sobem.
  */
-export async function enviarBases(
-  bases: BasesParaEnviar,
-  onProgresso?: (fracao: number) => void,
-) {
+export async function enviarBases(bases: BasesParaEnviar, onProgresso?: (fracao: number) => void) {
   const { cargaId } = await iniciarCargaServer({ data: { arquivos: bases.arquivos } });
 
   const lotes: { tipo: "lancamentos" | "membresia" | "saldos"; linhas: unknown[] }[] = [

@@ -50,9 +50,28 @@ const r = 8;
 const p = 1;
 
 const PALAVRAS = [
-  "aurora", "bonanca", "campina", "duna", "estrela", "farol", "girassol",
-  "horizonte", "ilha", "jardim", "lago", "manha", "nascente", "oliveira",
-  "pedra", "quintal", "raiz", "semente", "trilha", "vale", "vento", "vitoria",
+  "aurora",
+  "bonanca",
+  "campina",
+  "duna",
+  "estrela",
+  "farol",
+  "girassol",
+  "horizonte",
+  "ilha",
+  "jardim",
+  "lago",
+  "manha",
+  "nascente",
+  "oliveira",
+  "pedra",
+  "quintal",
+  "raiz",
+  "semente",
+  "trilha",
+  "vale",
+  "vento",
+  "vitoria",
 ];
 
 const senha =

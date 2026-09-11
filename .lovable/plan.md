@@ -23,6 +23,7 @@ Nenhuma outra alteração de lógica de negócio — KPIs, donut, tabela de enga
 ## Verificação
 
 Após a correção, reenviar os mesmos arquivos deve:
+
 - Popular o filtro "Unidade" com todos os valores reais de `Descrição CR. 1º Nível` (Central Alphaville, Central Luxemburgo, etc.).
 - Calcular `metaMensal ≈ R$ 6.347.583,33` e `metaAnual ≈ R$ 76.171.000,00`.
 - Renderizar gráficos e donut sem erro.

@@ -7,13 +7,13 @@ algo der errado, então vai direto ao ponto.
 
 ## O essencial em cinco linhas
 
-| | |
-|---|---|
-| **O que é** | Um site interno. Acesso pela rede da Central, via VPN. |
-| **Roda com** | Node 22 ou 24. Nada além disso. |
-| **Onde ficam os dados** | A pasta `dados/` — ou o caminho em `DADOS_DIR`. |
-| **Banco de dados** | SQLite, um arquivo. Não há serviço de banco para manter. |
-| **Contas** | 1 administrador (`Financeiro`) e os pastores. Sem cadastro público. |
+|                         |                                                                     |
+| ----------------------- | ------------------------------------------------------------------- |
+| **O que é**             | Um site interno. Acesso pela rede da Central, via VPN.              |
+| **Roda com**            | Node 22 ou 24. Nada além disso.                                     |
+| **Onde ficam os dados** | A pasta `dados/` — ou o caminho em `DADOS_DIR`.                     |
+| **Banco de dados**      | SQLite, um arquivo. Não há serviço de banco para manter.            |
+| **Contas**              | 1 administrador (`Financeiro`) e os pastores. Sem cadastro público. |
 
 ---
 
@@ -78,11 +78,11 @@ node .output/server/index.mjs
 
 Variáveis de ambiente:
 
-| Variável | Obrigatória | Para quê |
-|---|---|---|
-| `SESSION_SECRET` | **sim** | Cifra o cookie de sessão. Mínimo de 32 caracteres. |
-| `DADOS_DIR` | não | Pasta do banco. Sem ela, `./dados`. |
-| `PORT` | não | Porta. Sem ela, 3000. |
+| Variável         | Obrigatória | Para quê                                           |
+| ---------------- | ----------- | -------------------------------------------------- |
+| `SESSION_SECRET` | **sim**     | Cifra o cookie de sessão. Mínimo de 32 caracteres. |
+| `DADOS_DIR`      | não         | Pasta do banco. Sem ela, `./dados`.                |
+| `PORT`           | não         | Porta. Sem ela, 3000.                              |
 
 Gerar o `SESSION_SECRET`:
 
@@ -150,7 +150,7 @@ quem já tem acesso ao servidor.
 ## Senha de pastor
 
 O caminho normal **não** é este script: é a tela do administrador. O Financeiro
-entra, vai em *Bases e permissões*, e usa o ícone de chave na linha do pastor
+entra, vai em _Bases e permissões_, e usa o ícone de chave na linha do pastor
 para gerar uma senha nova, que aparece uma vez com botão de copiar.
 
 A senha não é guardada em texto em lugar nenhum — o que fica no banco é um
@@ -161,7 +161,7 @@ hash. Por isso não existe "ver a senha de novo": só gerar outra.
 ## Perguntas que vão aparecer
 
 **"O pastor diz que não vê nada."**
-Provavelmente não tem unidade marcada. O Financeiro abre *Bases e permissões*,
+Provavelmente não tem unidade marcada. O Financeiro abre _Bases e permissões_,
 marca as unidades dele e aperta **Salvar seleções** — o botão é fácil de
 esquecer, e sem ele nada muda.
 
@@ -173,7 +173,7 @@ página.
 Não tem: o sistema recusa. Maiúsculas e minúsculas contam como o mesmo usuário.
 
 **"Quero apagar um pastor."**
-Use *desativar*, não apagar. A conta para de entrar e continua na lista, marcada,
+Use _desativar_, não apagar. A conta para de entrar e continua na lista, marcada,
 podendo ser reativada. Apagar removeria também o registro de quem enviou cada
 base.
 

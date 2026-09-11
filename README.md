@@ -12,12 +12,12 @@ Roda num servidor da própria Central, na rede interna, acessível por VPN.
 
 ## Seções
 
-| | |
-|---|---|
-| 1 — Total Geral | KPIs do período, entradas x despesas, dízimos vs. meta, saldo por centro de resultado e dois donuts de distribuição |
-| 2 — Acumulado Diário | Curva acumulada dia a dia contra a meta, comparação entre meses e a tabela do ano |
-| 3 — Análise de Despesas | Naturezas de 3º e 4º nível e despesa mensal, com filtragem cruzada por clique |
-| 4 — Controle de Metas | Meta contra realizado por categoria, com naturezas agrupadas |
+|                         |                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 1 — Total Geral         | KPIs do período, entradas x despesas, dízimos vs. meta, saldo por centro de resultado e dois donuts de distribuição |
+| 2 — Acumulado Diário    | Curva acumulada dia a dia contra a meta, comparação entre meses e a tabela do ano                                   |
+| 3 — Análise de Despesas | Naturezas de 3º e 4º nível e despesa mensal, com filtragem cruzada por clique                                       |
+| 4 — Controle de Metas   | Meta contra realizado por categoria, com naturezas agrupadas                                                        |
 
 Os seis filtros do cabeçalho — Ano, Unidade, Mês, Natureza Nível 3, Projeto e
 Meta — são universais: valem para todas as seções ao mesmo tempo. Para um
@@ -91,17 +91,17 @@ plataforma.
 
 ## Onde as coisas estão
 
-| | |
-|---|---|
-| `src/lib/banco.server.ts` | O único arquivo que fala SQL. `lerBase()` é a porta única de leitura. |
-| `src/lib/sessao.server.ts` | Quem está do outro lado, e quais unidades pode ver. |
-| `src/lib/gate.functions.ts` | Primeira execução, login, saída. |
-| `src/lib/pastores.functions.ts` | Cadastro de pastores, senhas e permissões. |
-| `src/lib/parsers.ts` | Leitura e normalização das planilhas, no navegador. |
-| `src/components/Upload.tsx` | A tela do administrador: bases em cima, unidades embaixo. |
-| `src/components/dashboard/` | As quatro seções e o trilho que as troca. |
-| `ferramentas/` | Backup e a chave reserva de senha, para o TI. |
-| `testes/` | O teste do recorte. |
+|                                 |                                                                       |
+| ------------------------------- | --------------------------------------------------------------------- |
+| `src/lib/banco.server.ts`       | O único arquivo que fala SQL. `lerBase()` é a porta única de leitura. |
+| `src/lib/sessao.server.ts`      | Quem está do outro lado, e quais unidades pode ver.                   |
+| `src/lib/gate.functions.ts`     | Primeira execução, login, saída.                                      |
+| `src/lib/pastores.functions.ts` | Cadastro de pastores, senhas e permissões.                            |
+| `src/lib/parsers.ts`            | Leitura e normalização das planilhas, no navegador.                   |
+| `src/components/Upload.tsx`     | A tela do administrador: bases em cima, unidades embaixo.             |
+| `src/components/dashboard/`     | As quatro seções e o trilho que as troca.                             |
+| `ferramentas/`                  | Backup e a chave reserva de senha, para o TI.                         |
+| `testes/`                       | O teste do recorte.                                                   |
 
 ## Banco de dados
 

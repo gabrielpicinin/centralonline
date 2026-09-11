@@ -95,9 +95,28 @@ export async function queimarTempoDeSenha(senha: string): Promise<void> {
  * progressivo do login torna a varredura inviável.
  */
 const PALAVRAS = [
-  "aurora", "bonanca", "campina", "duna", "estrela", "farol", "girassol",
-  "horizonte", "ilha", "jardim", "lago", "manha", "nascente", "oliveira",
-  "pedra", "quintal", "raiz", "semente", "trilha", "vale", "vento", "vitoria",
+  "aurora",
+  "bonanca",
+  "campina",
+  "duna",
+  "estrela",
+  "farol",
+  "girassol",
+  "horizonte",
+  "ilha",
+  "jardim",
+  "lago",
+  "manha",
+  "nascente",
+  "oliveira",
+  "pedra",
+  "quintal",
+  "raiz",
+  "semente",
+  "trilha",
+  "vale",
+  "vento",
+  "vitoria",
 ];
 
 export function gerarSenhaLegivel(): string {

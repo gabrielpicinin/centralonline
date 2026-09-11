@@ -168,6 +168,22 @@ function migrar(c: DatabaseSync) {
   }
 }
 
+/*
+ * O que o node:sqlite devolve numa linha: texto, número, nulo ou binário —
+ * nunca objeto. Descrever isso em vez de usar "any" faz o TypeScript recusar
+ * um r.campo.propriedade escrito por engano, que era justamente o erro que o
+ * any deixaria passar até o app quebrar rodando.
+ */
+type LinhaSQL = Record<string, string | number | bigint | Uint8Array | null>;
+
+/*
+ * Leitores de campo. Existem porque o SQLite não tem tipo forte de coluna: um
+ * INTEGER pode voltar como bigint, e um campo ausente volta nulo. Converter num
+ * lugar só evita a alternativa, que seria espalhar conversões e esquecer uma.
+ */
+const txt = (v: LinhaSQL[string]): string => (v == null ? "" : String(v));
+const num = (v: LinhaSQL[string]): number => (typeof v === "number" ? v : Number(v ?? 0));
+
 /** Nome reservado para a linha consolidada da planilha de metas. */
 export const TOTAL_GERAL = "__total_geral__";
 
@@ -420,26 +436,32 @@ export function criarPerfil(dados: {
 export function buscarPorUsuario(usuario: string): PerfilComHash | null {
   const c = conectar();
   const r = c.prepare("SELECT * FROM perfis WHERE chave = ?").get(chaveDe(usuario)) as
-    | Record<string, any>
+    | LinhaSQL
     | undefined;
   if (!r) return null;
   return {
-    id: r.id,
-    usuario: r.usuario,
-    nome: r.nome,
-    papel: r.papel,
+    id: num(r.id),
+    usuario: txt(r.usuario),
+    nome: txt(r.nome),
+    papel: txt(r.papel) as "admin" | "pastor",
     ativo: !!r.ativo,
-    senhaHash: r.senha_hash,
+    senhaHash: txt(r.senha_hash),
   };
 }
 
 export function buscarPorId(id: number): Perfil | null {
   const c = conectar();
   const r = c.prepare("SELECT id, usuario, nome, papel, ativo FROM perfis WHERE id = ?").get(id) as
-    | Record<string, any>
+    | LinhaSQL
     | undefined;
   if (!r) return null;
-  return { id: r.id, usuario: r.usuario, nome: r.nome, papel: r.papel, ativo: !!r.ativo };
+  return {
+    id: num(r.id),
+    usuario: txt(r.usuario),
+    nome: txt(r.nome),
+    papel: txt(r.papel) as "admin" | "pastor",
+    ativo: !!r.ativo,
+  };
 }
 
 export function trocarSenha(perfilId: number, senhaHash: string) {
@@ -472,7 +494,7 @@ export function listarPastores(): PastorComUnidades[] {
     .prepare(
       "SELECT id, usuario, nome, papel, ativo FROM perfis WHERE papel = 'pastor' ORDER BY nome",
     )
-    .all() as Record<string, any>[];
+    .all() as LinhaSQL[];
 
   const porPerfil = new Map<number, string[]>();
   for (const r of c.prepare("SELECT perfil_id, unidade FROM permissoes ORDER BY unidade").all() as {
@@ -485,12 +507,12 @@ export function listarPastores(): PastorComUnidades[] {
   }
 
   return perfis.map((r) => ({
-    id: r.id,
-    usuario: r.usuario,
-    nome: r.nome,
-    papel: r.papel,
+    id: num(r.id),
+    usuario: txt(r.usuario),
+    nome: txt(r.nome),
+    papel: txt(r.papel) as "admin" | "pastor",
     ativo: !!r.ativo,
-    unidades: porPerfil.get(r.id) ?? [],
+    unidades: porPerfil.get(num(r.id)) ?? [],
   }));
 }
 
@@ -654,25 +676,25 @@ export function lerBase(unidades: string[] | null): BaseCompleta {
 
   const lanc = c
     .prepare(`SELECT * FROM lancamentos WHERE carga_id = ?${filtro}`)
-    .all(...args) as Record<string, any>[];
+    .all(...args) as LinhaSQL[];
 
   const financial: FinancialRow[] = lanc.map((r) => ({
-    unidade: r.unidade,
-    nat2: r.nat2,
-    nat3: r.nat3,
-    nat4: r.nat4,
-    razaoSocial: r.razao_social,
-    projeto: r.projeto,
-    meta: r.meta,
-    credito: r.credito,
-    credito1: r.credito1,
-    debito: r.debito,
-    debito1: r.debito1,
-    data: r.data ? new Date(r.data) : null,
-    dia: r.dia,
-    mes: r.mes,
-    ano: r.ano,
-    nroUnico: r.nro_unico,
+    unidade: txt(r.unidade),
+    nat2: txt(r.nat2),
+    nat3: txt(r.nat3),
+    nat4: txt(r.nat4),
+    razaoSocial: txt(r.razao_social),
+    projeto: txt(r.projeto),
+    meta: txt(r.meta),
+    credito: num(r.credito),
+    credito1: num(r.credito1),
+    debito: num(r.debito),
+    debito1: num(r.debito1),
+    data: r.data ? new Date(txt(r.data)) : null,
+    dia: num(r.dia),
+    mes: num(r.mes),
+    ano: num(r.ano),
+    nroUnico: txt(r.nro_unico),
   }));
 
   /*

@@ -147,3 +147,93 @@ test("nome de unidade hostil não escapa do filtro nem derruba a tabela", () => 
 test("pedir uma unidade que não existe devolve vazio, e não tudo", () => {
   assert.equal(banco.lerBase(["Central Inexistente"]).financial.length, 0);
 });
+
+/*
+ * Acentos vindos de um arquivo do Excel brasileiro, até o recorte.
+ *
+ * O Excel BR salva CSV em Windows-1252, não em UTF-8, e os nomes de unidade da
+ * Central têm acento — "Central Missões", "Central Picos - Missões". Se a
+ * decodificação errar em qualquer ponto do caminho, o nome chega diferente do
+ * que está gravado em `permissoes`, que casa por texto exato: o pastor perde o
+ * acesso e ninguém liga uma coisa à outra.
+ *
+ * O teste percorre o caminho inteiro — bytes cp1252, leitura da planilha,
+ * gravação, leitura e recorte —, e não só a decodificação isolada.
+ */
+test("nome acentuado de arquivo do Excel BR sobrevive até o recorte", async () => {
+  const { parseFile, normalizeFinancial } = await import("../src/lib/parsers.ts");
+
+  const colunas = [
+    "Descrição CR. 1º Nível",
+    "Descrição Nat. 2º Nível",
+    "Descrição Nat. 3º Nível",
+    "Descrição Nat. 4º Nível",
+    "Razão Social Parceiro",
+    "Nome Projeto",
+    "Meta",
+    "Crédito",
+    "Crédito 2",
+    "Débito",
+    "Dia Baixa",
+    "Mês Baixa",
+    "Ano Baixa",
+    "Nro. Único Financeiro",
+  ];
+  const ACENTUADA = "Central Missões";
+  const texto = [
+    colunas.join(";"),
+    [
+      ACENTUADA,
+      "Dízimos e Ofertas",
+      "Gazofilácio",
+      "Dízimo",
+      "José Antônio",
+      "",
+      "",
+      "1000",
+      "1000",
+      "0",
+      "1",
+      "1",
+      "2026",
+      "F1",
+    ].join(";"),
+  ].join("\n");
+
+  /* Codifica em Windows-1252 de verdade: um byte por caractere acentuado. */
+  const cp1252: Record<string, number> = {
+    ç: 0xe7,
+    ã: 0xe3,
+    õ: 0xf5,
+    é: 0xe9,
+    ê: 0xea,
+    á: 0xe1,
+    í: 0xed,
+    ó: 0xf3,
+    ú: 0xfa,
+    â: 0xe2,
+    ô: 0xf4,
+    º: 0xba,
+  };
+  const bytes = new Uint8Array(
+    [...texto].map((ch) => cp1252[ch] ?? (ch.charCodeAt(0) < 256 ? ch.charCodeAt(0) : 0x3f)),
+  );
+  assert.ok(bytes.includes(0xe7), "o arquivo de teste precisa mesmo estar em cp1252");
+
+  const lidas = normalizeFinancial(await parseFile(new File([bytes], "FINANCEIRO.csv")));
+  assert.equal(lidas.rows[0]?.unidade, ACENTUADA, "o acento tem de sobreviver à leitura");
+
+  const carga = banco.iniciarCarga(["FINANCEIRO.csv"], "Financeiro");
+  banco.gravarLancamentos(carga, lidas.rows);
+  banco.finalizarCarga(carga);
+
+  assert.ok(
+    banco.listarUnidades().includes(ACENTUADA),
+    "o acento tem de sobreviver à ida e volta pelo banco",
+  );
+  assert.equal(
+    banco.lerBase([ACENTUADA]).financial.length,
+    1,
+    "e o recorte tem de casar com o nome acentuado",
+  );
+});

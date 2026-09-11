@@ -126,6 +126,14 @@ function parseDate(v: unknown): Date | null {
     return isFinite(d.getTime()) ? d : null;
   }
   const s = String(v).trim();
+  /*
+   * As barras invertidas antes de / e - NÃO são supérfluas, por mais que o lint
+   * diga que são. Dentro da classe, o hífen fica entre "/" e "." — sem o escape
+   * ele vira um INTERVALO de 0x2F a 0x2E, que está fora de ordem, e o regex
+   * deixa de compilar. Verificado: rodar "eslint --fix" aqui derruba a leitura
+   * de datas inteira, com "Range out of order in character class".
+   */
+  // eslint-disable-next-line no-useless-escape
   const m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
   if (m) {
     let y = parseInt(m[3], 10);
@@ -373,6 +381,7 @@ export function normalizeMembership(rows: RawRow[]): MembershipRow[] {
   const sample = rows[0];
   const kUnidade = pickKey(sample, ["Unidades", "Unidade", "Descrição CR. 1º Nível"]);
   const monthKeys = Object.keys(sample).filter((k) =>
+    // eslint-disable-next-line no-useless-escape -- mesma razão do regex de data
     /^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)\s*[\/\-]\s*\d{2,4}/i.test(k.trim()),
   );
   return rows

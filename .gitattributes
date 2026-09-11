@@ -1,0 +1,23 @@
+# Quebra de linha: LF em todo lugar, inclusive na cópia de trabalho.
+#
+# Sem este arquivo, o Git no Windows converte para CRLF ao baixar (o padrão
+# core.autocrlf=true). O conteúdo gravado no repositório continua correto, mas
+# os arquivos EM DISCO ficam com CR — e o Prettier, que espera LF, passa a
+# acusar um erro por linha. Medido aqui: quase 5.000 erros falsos, que afogam
+# os poucos reais e treinam qualquer um a ignorar o lint.
+#
+# `eol=lf` resolve para todos, independentemente da configuração de cada
+# máquina, que é justamente o tipo de coisa que não deve depender de ajuste
+# individual.
+* text=auto eol=lf
+
+# Binários não passam por conversão nenhuma.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.woff  binary
+*.woff2 binary
+*.db    binary
+*.xlsx  binary

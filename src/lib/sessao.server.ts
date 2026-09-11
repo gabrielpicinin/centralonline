@@ -68,6 +68,12 @@ export function getSessionConfig() {
 }
 
 export async function lerSessao(): Promise<DadosSessao> {
+  /*
+   * useSession vem do h3 e roda no servidor — não é um hook do React, só tem o
+   * nome parecido, e a regra do lint vai pelo nome. Um erro que nunca poderá
+   * ser corrigido é pior do que nenhum: ensina a ignorar o lint inteiro.
+   */
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const s = await useSession<DadosSessao>(getSessionConfig());
   return s.data ?? {};
 }
