@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LogOut, Sparkles, Calendar, FilterX } from "lucide-react";
+import { LogOut, Calendar, FilterX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -11,7 +11,6 @@ import {
 import { useApp } from "@/lib/appState";
 import { isDizimosOfertas, norm } from "@/lib/parsers";
 import { MESES } from "@/lib/format";
-import { AISidebar } from "./AISidebar";
 import { LogoCentral } from "./LogoCentral";
 import { MultiSelect } from "./dashboard/MultiSelect";
 import { Section1Total } from "./dashboard/Section1Total";
@@ -23,8 +22,6 @@ import { SectionDeck, type SecaoDef } from "./dashboard/SectionDeck";
 export function Dashboard() {
   const { financial, membership, saldo, metaAnualPorUnidade, metaAnualTotalGeral, user, signOut } =
     useApp();
-  // Fechada por padrão: o deck foi desenhado para ocupar a tela inteira.
-  const [aiOpen, setAiOpen] = useState(false);
 
   const anos = useMemo(() => {
     const set = new Set<number>();
@@ -315,15 +312,6 @@ export function Dashboard() {
           <div className="flex items-center gap-2">
             <span className="hidden text-sm text-ink-2 sm:inline">{user}</span>
             <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setAiOpen((v) => !v)}
-              className="gap-2 border-line-strong bg-panel-2 text-ink hover:border-acc hover:bg-panel-2 hover:text-ink"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span className="hidden sm:inline">Assistente IA</span>
-            </Button>
-            <Button
               variant="ghost"
               size="sm"
               onClick={logout}
@@ -413,14 +401,9 @@ export function Dashboard() {
        * Sem rolagem: o deck ocupa exatamente o que sobra da tela e escala a
        * seção ativa para caber. Trocar de seção é clicar, não rolar.
        */}
-      <div
-        className="min-h-0 flex-1 transition-[margin] duration-300"
-        style={{ marginRight: aiOpen ? 400 : 0 }}
-      >
+      <div className="min-h-0 flex-1">
         <SectionDeck secoes={secoes} />
       </div>
-
-      <AISidebar open={aiOpen} onClose={() => setAiOpen(false)} />
     </div>
   );
 }
