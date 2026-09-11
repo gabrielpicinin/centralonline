@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LogOut, Calendar, FilterX } from "lucide-react";
+import { LogOut, Calendar, FilterX, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -20,8 +20,17 @@ import { EntradasDiarias } from "./dashboard/EntradasDiarias";
 import { SectionDeck, type SecaoDef } from "./dashboard/SectionDeck";
 
 export function Dashboard() {
-  const { financial, membership, saldo, metaAnualPorUnidade, metaAnualTotalGeral, user, signOut } =
-    useApp();
+  const {
+    financial,
+    membership,
+    saldo,
+    metaAnualPorUnidade,
+    metaAnualTotalGeral,
+    user,
+    papel,
+    setStep,
+    signOut,
+  } = useApp();
 
   const anos = useMemo(() => {
     const set = new Set<number>();
@@ -311,6 +320,23 @@ export function Dashboard() {
           </div>
           <div className="flex items-center gap-2">
             <span className="hidden text-sm text-ink-2 sm:inline">{user}</span>
+            {/*
+             * Só o administrador vê o caminho de volta. Sem ele, mudar a unidade
+             * de um pastor exigiria sair e entrar de novo — e a checagem de
+             * papel que vale é a do servidor; isto aqui só evita desenhar um
+             * botão que não levaria a lugar nenhum.
+             */}
+            {papel === "admin" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setStep("upload")}
+                className="gap-2 border-line-strong bg-panel-2 text-ink hover:border-acc hover:bg-panel-2 hover:text-ink"
+              >
+                <SlidersHorizontal className="h-4 w-4" />
+                <span className="hidden sm:inline">Bases e permissões</span>
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="sm"

@@ -15,6 +15,7 @@ import { useApp } from "@/lib/appState";
 import { normalizeFinancial, normalizeMembership, normalizeSaldo, parseFile } from "@/lib/parsers";
 import { enviarBases } from "@/lib/enviarBase";
 import { estadoServer } from "@/lib/dados.functions";
+import { UnidadesPorPastor } from "@/components/UnidadesPorPastor";
 
 interface DropProps {
   label: string;
@@ -274,7 +275,7 @@ export function Upload() {
           </div>
         )}
 
-        <div className="mt-8 flex justify-end">
+        <div className="flex justify-end">
           <Button
             disabled={!ready || loading || indoParaODashboard}
             onClick={handleGenerate}
@@ -284,6 +285,8 @@ export function Upload() {
             {loading ? "Enviando…" : baseAtual ? "Substituir base e abrir" : "Gerar Dashboard"}
           </Button>
         </div>
+
+        <UnidadesPorPastor />
       </div>
     </div>
   );

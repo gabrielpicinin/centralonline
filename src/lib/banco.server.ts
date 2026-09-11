@@ -405,6 +405,95 @@ export function unidadesDoPerfil(perfilId: number): string[] {
   ).map((r) => r.unidade);
 }
 
+export interface PastorComUnidades extends Perfil {
+  unidades: string[];
+}
+
+/**
+ * Os pastores e o que cada um enxerga, para a tela de permissões.
+ *
+ * Numa consulta só, e não uma por pastor: com 17 contas seriam 18 idas ao
+ * banco para desenhar uma tela.
+ */
+export function listarPastores(): PastorComUnidades[] {
+  const c = conectar();
+  const perfis = c
+    .prepare(
+      "SELECT id, usuario, nome, papel, ativo FROM perfis WHERE papel = 'pastor' ORDER BY nome",
+    )
+    .all() as Record<string, any>[];
+
+  const porPerfil = new Map<number, string[]>();
+  for (const r of c.prepare("SELECT perfil_id, unidade FROM permissoes ORDER BY unidade").all() as {
+    perfil_id: number;
+    unidade: string;
+  }[]) {
+    const lista = porPerfil.get(r.perfil_id);
+    if (lista) lista.push(r.unidade);
+    else porPerfil.set(r.perfil_id, [r.unidade]);
+  }
+
+  return perfis.map((r) => ({
+    id: r.id,
+    usuario: r.usuario,
+    nome: r.nome,
+    papel: r.papel,
+    ativo: !!r.ativo,
+    unidades: porPerfil.get(r.id) ?? [],
+  }));
+}
+
+/**
+ * Grava as unidades de vários pastores de uma vez.
+ *
+ * Tudo numa transação: a tela salva o que o administrador mexeu em conjunto, e
+ * uma falha no meio não pode deixar metade das mudanças valendo. Ou vale tudo,
+ * ou nada muda — e ele tenta de novo vendo a mesma tela de antes.
+ *
+ * Para cada pastor, apaga e regrava em vez de calcular a diferença. São no
+ * máximo 18 linhas por pessoa; a diferença de custo é nula e o código que a
+ * calcularia é onde moram os erros.
+ */
+export function salvarPermissoes(alteracoes: { perfilId: number; unidades: string[] }[]) {
+  const c = conectar();
+  const apagar = c.prepare("DELETE FROM permissoes WHERE perfil_id = ?");
+  const inserir = c.prepare("INSERT INTO permissoes (perfil_id, unidade) VALUES (?, ?)");
+  c.exec("BEGIN");
+  try {
+    for (const a of alteracoes) {
+      apagar.run(a.perfilId);
+      for (const u of a.unidades) inserir.run(a.perfilId, u);
+    }
+    c.exec("COMMIT");
+  } catch (e) {
+    c.exec("ROLLBACK");
+    throw e;
+  }
+}
+
+/**
+ * Liga ou desliga uma conta.
+ *
+ * Desativar em vez de apagar: o registro de quem enviou cada carga aponta para
+ * o perfil, e apagar a pessoa apagaria junto a resposta de "quem subiu essa
+ * base".
+ *
+ * A conta desativada continua aparecendo na tela, marcada — e não sumindo.
+ * Sumir impediria de desfazer um clique errado, e a lista tem 17 linhas: não é
+ * o tipo de tela que precisa ser podada para caber.
+ */
+export function definirAtivo(perfilId: number, ativo: boolean) {
+  conectar()
+    .prepare("UPDATE perfis SET ativo = ? WHERE id = ?")
+    .run(ativo ? 1 : 0, perfilId);
+}
+
+/** Já existe conta com este usuário? O login trata maiúsculas como iguais. */
+export function usuarioExiste(usuario: string): boolean {
+  const c = conectar();
+  return !!c.prepare("SELECT 1 FROM perfis WHERE chave = ?").get(chaveDe(usuario));
+}
+
 /* ============================ leitura ============================ */
 
 export function cargaAtiva(): ResumoCarga | null {

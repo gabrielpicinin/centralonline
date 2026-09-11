@@ -11,6 +11,17 @@ interface MultiSelectProps {
   selected: string[];
   onChange: (next: string[]) => void;
   allLabel?: string;
+  /**
+   * Rótulo para "nada selecionado", quando isso significa algo diferente de
+   * "tudo".
+   *
+   * No cabeçalho do dashboard os dois casos são a mesma coisa — marcar todas as
+   * unidades ou nenhuma quer dizer "sem filtro" —, e por isso o padrão é
+   * mostrar allLabel nos dois. Na tela de permissões não: lá, nenhuma unidade
+   * marcada quer dizer que o pastor não vê nada, e exibir o mesmo texto de
+   * "todas" seria afirmar exatamente o contrário.
+   */
+  noneLabel?: string;
   triggerClassName?: string;
   popoverWidthClass?: string;
   formatItem?: (v: string) => string;
@@ -23,6 +34,7 @@ export function MultiSelect({
   selected,
   onChange,
   allLabel = "Todos",
+  noneLabel,
   triggerClassName = "",
   popoverWidthClass = "w-64",
   formatItem,
@@ -60,11 +72,13 @@ export function MultiSelect({
     onChange(selected.includes(v) ? selected.filter((x) => x !== v) : [...selected, v].sort());
 
   const triggerLabel =
-    selected.length === 0 || selected.length === options.length
-      ? allLabel
-      : selected.length <= 2
-        ? selected.map(rotulo).join(", ")
-        : `${selected.length} selecionados`;
+    selected.length === 0 && noneLabel
+      ? noneLabel
+      : selected.length === 0 || selected.length === options.length
+        ? allLabel
+        : selected.length <= 2
+          ? selected.map(rotulo).join(", ")
+          : `${selected.length} selecionados`;
 
   return (
     <div className={triggerClassName}>
