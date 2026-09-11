@@ -36,3 +36,6 @@ dist-ssr
 
 # Banco de dados local. No servidor da Central esta pasta e o que entra no backup.
 /dados
+
+# Backups gerados por ferramentas/backup.mjs
+/backups
