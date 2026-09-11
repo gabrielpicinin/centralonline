@@ -10,6 +10,13 @@ interface AppState {
   setStep: (s: Step) => void;
   user: string | null;
   setUser: (u: string | null) => void;
+  /*
+   * O papel decide o caminho: administrador passa pela tela de bases, pastor vai
+   * direto ao dashboard. Serve só para a tela saber o que desenhar — toda
+   * decisão de acesso é reconferida no servidor a cada requisição.
+   */
+  papel: "admin" | "pastor" | null;
+  setPapel: (p: "admin" | "pastor" | null) => void;
   financial: FinancialRow[];
   membership: MembershipRow[];
   /** Saldo por centro de resultado. Base opcional: pode vir vazia. */
@@ -41,6 +48,7 @@ const Ctx = createContext<AppState | null>(null);
 export function AppProvider({ children }: { children: ReactNode }) {
   const [step, setStepRaw] = useState<Step>("login");
   const [user, setUser] = useState<string | null>(null);
+  const [papel, setPapel] = useState<"admin" | "pastor" | null>(null);
   const [financial, setFinancial] = useState<FinancialRow[]>([]);
   const [membership, setMembership] = useState<MembershipRow[]>([]);
   const [saldo, setSaldo] = useState<SaldoRow[]>([]);
@@ -124,6 +132,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Best-effort — clear local state regardless.
     }
     setUser(null);
+    setPapel(null);
     setFinancial([]);
     setMembership([]);
     setSaldo([]);
@@ -140,6 +149,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setStep,
         user,
         setUser,
+        papel,
+        setPapel,
         financial,
         membership,
         saldo,

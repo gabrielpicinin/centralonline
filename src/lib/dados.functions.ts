@@ -20,7 +20,7 @@ import {
   listarUnidades,
   lerBase,
 } from "./banco.server";
-import { exigirSessao, unidadesDaSessao } from "./sessao.server";
+import { exigirAdministrador, unidadesDaSessao } from "./sessao.server";
 
 /*
  * O conteúdo das linhas não é validado campo a campo aqui. Elas vêm dos
@@ -39,14 +39,14 @@ export const iniciarCargaServer = createServerFn({ method: "POST" })
     z.object({ arquivos: z.array(z.string().max(300)).max(10) }).parse(d),
   )
   .handler(async ({ data }) => {
-    const sessao = await exigirSessao();
+    const sessao = await exigirAdministrador();
     return { cargaId: iniciarCarga(data.arquivos, sessao.user ?? null) };
   });
 
 export const enviarLoteServer = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => loteSchema.parse(d))
   .handler(async ({ data }) => {
-    await exigirSessao();
+    await exigirAdministrador();
     if (data.tipo === "lancamentos") gravarLancamentos(data.cargaId, data.linhas);
     else if (data.tipo === "membresia") gravarMembresia(data.cargaId, data.linhas);
     else gravarSaldos(data.cargaId, data.linhas);
@@ -64,7 +64,7 @@ export const finalizarCargaServer = createServerFn({ method: "POST" })
       .parse(d),
   )
   .handler(async ({ data }) => {
-    await exigirSessao();
+    await exigirAdministrador();
     gravarMetas(data.cargaId, data.metaAnualPorUnidade, data.metaAnualTotalGeral);
     return finalizarCarga(data.cargaId);
   });
@@ -83,6 +83,6 @@ export const carregarBaseServer = createServerFn({ method: "GET" }).handler(asyn
 
 /** Estado para a tela do administrador: a carga atual e o universo de unidades. */
 export const estadoServer = createServerFn({ method: "GET" }).handler(async () => {
-  await exigirSessao();
+  await exigirAdministrador();
   return { carga: cargaAtiva(), unidades: listarUnidades() };
 });

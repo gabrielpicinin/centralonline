@@ -104,6 +104,30 @@ function aplicarEsquema(c: DatabaseSync) {
       vista_em  TEXT NOT NULL
     );
 
+    /*
+     * Uma conta por pessoa. A coluna "chave" é o que o login procura: o
+     * usuário em minúsculas e sem espaços nas pontas, para "Financeiro" e
+     * "financeiro " serem a mesma conta. "usuario" guarda a grafia original,
+     * que é a que aparece na tela.
+     */
+    CREATE TABLE IF NOT EXISTS perfis (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      chave      TEXT    NOT NULL UNIQUE,
+      usuario    TEXT    NOT NULL,
+      nome       TEXT    NOT NULL,
+      papel      TEXT    NOT NULL CHECK (papel IN ('admin', 'pastor')),
+      senha_hash TEXT    NOT NULL,
+      ativo      INTEGER NOT NULL DEFAULT 1,
+      criado_em  TEXT    NOT NULL
+    );
+
+    /* Quais unidades cada perfil enxerga. Sem linha aqui, não enxerga nenhuma. */
+    CREATE TABLE IF NOT EXISTS permissoes (
+      perfil_id INTEGER NOT NULL REFERENCES perfis(id) ON DELETE CASCADE,
+      unidade   TEXT    NOT NULL,
+      PRIMARY KEY (perfil_id, unidade)
+    );
+
     CREATE INDEX IF NOT EXISTS ix_lanc_carga    ON lancamentos(carga_id);
     CREATE INDEX IF NOT EXISTS ix_lanc_unidade  ON lancamentos(carga_id, unidade);
     CREATE INDEX IF NOT EXISTS ix_memb_carga    ON membresia(carga_id);
@@ -285,6 +309,102 @@ function podarCargasAntigas() {
   c.prepare("DELETE FROM cargas WHERE id < ?").run(menor);
 }
 
+/* ============================ perfis ============================ */
+
+export interface Perfil {
+  id: number;
+  usuario: string;
+  nome: string;
+  papel: "admin" | "pastor";
+  ativo: boolean;
+}
+
+interface PerfilComHash extends Perfil {
+  senhaHash: string;
+}
+
+const chaveDe = (usuario: string) => usuario.trim().toLowerCase();
+
+/**
+ * Quantas contas existem.
+ *
+ * É o que decide se a tela de primeira execução aparece: enquanto for zero, o
+ * endereço mostra a criação do administrador em vez do login. Assim que a
+ * primeira conta nasce, essa tela desaparece e não há caminho de volta.
+ */
+export function contarPerfis(): number {
+  const c = conectar();
+  return (c.prepare("SELECT COUNT(*) AS n FROM perfis").get() as { n: number }).n;
+}
+
+export function criarPerfil(dados: {
+  usuario: string;
+  nome: string;
+  papel: "admin" | "pastor";
+  senhaHash: string;
+}): Perfil {
+  const c = conectar();
+  c.prepare(
+    `INSERT INTO perfis (chave, usuario, nome, papel, senha_hash, ativo, criado_em)
+     VALUES (?, ?, ?, ?, ?, 1, ?)`,
+  ).run(
+    chaveDe(dados.usuario),
+    dados.usuario.trim(),
+    dados.nome.trim(),
+    dados.papel,
+    dados.senhaHash,
+    new Date().toISOString(),
+  );
+  const { id } = c.prepare("SELECT last_insert_rowid() AS id").get() as { id: number };
+  return {
+    id,
+    usuario: dados.usuario.trim(),
+    nome: dados.nome.trim(),
+    papel: dados.papel,
+    ativo: true,
+  };
+}
+
+/** Devolve o perfil COM o hash da senha. Só o login deve chamar. */
+export function buscarPorUsuario(usuario: string): PerfilComHash | null {
+  const c = conectar();
+  const r = c.prepare("SELECT * FROM perfis WHERE chave = ?").get(chaveDe(usuario)) as
+    | Record<string, any>
+    | undefined;
+  if (!r) return null;
+  return {
+    id: r.id,
+    usuario: r.usuario,
+    nome: r.nome,
+    papel: r.papel,
+    ativo: !!r.ativo,
+    senhaHash: r.senha_hash,
+  };
+}
+
+export function buscarPorId(id: number): Perfil | null {
+  const c = conectar();
+  const r = c.prepare("SELECT id, usuario, nome, papel, ativo FROM perfis WHERE id = ?").get(id) as
+    | Record<string, any>
+    | undefined;
+  if (!r) return null;
+  return { id: r.id, usuario: r.usuario, nome: r.nome, papel: r.papel, ativo: !!r.ativo };
+}
+
+export function trocarSenha(perfilId: number, senhaHash: string) {
+  conectar().prepare("UPDATE perfis SET senha_hash = ? WHERE id = ?").run(senhaHash, perfilId);
+}
+
+/** As unidades liberadas para um perfil. Lista vazia significa nenhuma. */
+export function unidadesDoPerfil(perfilId: number): string[] {
+  const c = conectar();
+  return (
+    c
+      .prepare("SELECT unidade FROM permissoes WHERE perfil_id = ? ORDER BY unidade")
+      .all(perfilId) as { unidade: string }[]
+  ).map((r) => r.unidade);
+}
+
 /* ============================ leitura ============================ */
 
 export function cargaAtiva(): ResumoCarga | null {
@@ -422,6 +542,20 @@ export function lerBase(unidades: string[] | null): BaseCompleta {
   for (const m of met) {
     if (m.unidade === TOTAL_GERAL) metaAnualTotalGeral = m.anual;
     else metaAnualPorUnidade[m.unidade] = m.anual;
+  }
+
+  /*
+   * Sem a linha consolidada, o total é a soma das unidades visíveis.
+   *
+   * É o caso do pastor: a linha "Total Geral" vale a rede inteira e por isso
+   * não lhe é entregue, senão a meta dele seria a de todas as igrejas. A mesma
+   * regra existe em parsers.ts, mas lá ela roda ao interpretar a planilha — um
+   * caminho pelo qual só o administrador passa, no upload. Quem lê do banco
+   * nunca chega nela, e sem esta soma o card "Meta de Dízimos" do pastor
+   * aparecia zerado.
+   */
+  if (!metaAnualTotalGeral) {
+    metaAnualTotalGeral = Object.values(metaAnualPorUnidade).reduce((s, v) => s + v, 0);
   }
 
   return { financial, membership, saldo, metaAnualPorUnidade, metaAnualTotalGeral, carga };

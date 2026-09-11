@@ -9,14 +9,16 @@
  * Sufixo `.server`: só pode ser importado de dentro de um `.functions.ts`.
  */
 import { useSession } from "@tanstack/react-start/server";
+import { buscarPorId, unidadesDoPerfil } from "./banco.server";
 
 export interface DadosSessao {
   unlocked?: boolean;
   user?: string;
   /*
-   * Preenchidos na Fase 2, quando existirem contas de verdade. Até lá a sessão
-   * carrega só o gate de senha única, e `papel` ausente é tratado como
-   * administrador — que é exatamente o que a senha única concede hoje.
+   * Quem é, de fato. O papel viaja no cookie só para a tela saber o que
+   * desenhar; toda decisão de acesso reconfere no banco, porque uma conta
+   * desativada ou com unidades alteradas precisa valer na hora — e não daqui a
+   * sete dias, quando o cookie vencer.
    */
   perfilId?: number;
   papel?: "admin" | "pastor";
@@ -86,18 +88,34 @@ export async function exigirSessao(): Promise<DadosSessao> {
 /**
  * As unidades que esta sessão pode ver. `null` significa "todas".
  *
- * Hoje devolve sempre `null`, porque ainda não existem contas por pessoa — a
- * senha única do gate concede o acesso inteiro. Na Fase 4 esta função passa a
- * consultar as permissões do perfil, e o recorte entra em vigor em todo o
- * dashboard sem que nenhuma outra linha precise mudar: quem chama `lerBase` já
- * a chama através daqui.
+ * É daqui que sai o argumento de `lerBase`, a porta única de leitura. O valor
+ * NUNCA vem do navegador: se viesse, bastaria alterá-lo na requisição para ver
+ * qualquer unidade. Ele sai da sessão, e a sessão sai do cookie assinado.
+ *
+ * O papel é reconferido no banco a cada leitura em vez de confiar no cookie.
+ * Sem isso, tirar uma unidade de um pastor só valeria quando o cookie dele
+ * vencesse — até sete dias depois.
  */
 export async function unidadesDaSessao(): Promise<string[] | null> {
   const dados = await exigirSessao();
-  if (dados.papel === "pastor") {
-    // Fase 4 preenche. Até lá, um perfil de pastor sem permissões não vê nada,
-    // que é o padrão seguro: liberar é um ato explícito, nunca o esquecimento.
-    return [];
-  }
-  return null;
+  if (!dados.perfilId) throw new Error("Não autorizado");
+
+  const perfil = buscarPorId(dados.perfilId);
+  if (!perfil || !perfil.ativo) throw new Error("Não autorizado");
+  if (perfil.papel === "admin") return null;
+
+  /*
+   * Pastor sem nenhuma unidade marcada recebe lista vazia, e lista vazia é
+   * "nada" — não "tudo". Liberar acesso é sempre um ato explícito de quem
+   * administra; nunca o resultado de um esquecimento.
+   */
+  return unidadesDoPerfil(perfil.id);
+}
+
+/** Só administradores. Usado pelas funções que enviam base e mudam permissões. */
+export async function exigirAdministrador(): Promise<DadosSessao> {
+  const dados = await exigirSessao();
+  const perfil = dados.perfilId ? buscarPorId(dados.perfilId) : null;
+  if (!perfil || !perfil.ativo || perfil.papel !== "admin") throw new Error("Não autorizado");
+  return dados;
 }
