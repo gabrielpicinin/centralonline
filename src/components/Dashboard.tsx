@@ -59,8 +59,13 @@ export function Dashboard() {
   const rotuloTodasUnidades = useMemo(() => {
     if (papel !== "pastor") return "Total Geral";
     if (unidades.length === 0) return "Nenhuma unidade";
-    if (unidades.length <= 2) return unidades.join(", ");
-    return `Minhas ${unidades.length} unidades`;
+    /*
+     * Os nomes, sempre — não uma contagem. "Minhas 3 unidades" obrigaria o
+     * pastor a abrir o filtro para lembrar de quais números está olhando; os
+     * nomes respondem isso sem clique. Onde não couber, o texto é cortado com
+     * reticências e o nome completo fica no title do elemento.
+     */
+    return unidades.join(", ");
   }, [papel, unidades.join("|")]);
 
   const defaultAno = anos[0] ?? new Date().getFullYear();
