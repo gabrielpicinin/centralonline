@@ -136,6 +136,15 @@ function aplicarEsquema(c: DatabaseSync) {
   `);
 }
 
+/**
+ * Fecha a conexão. Usado pelos testes, que apagam a pasta no fim — no Windows o
+ * arquivo não some enquanto alguém o mantém aberto.
+ */
+export function fechar() {
+  db?.close();
+  db = null;
+}
+
 /** Nome reservado para a linha consolidada da planilha de metas. */
 export const TOTAL_GERAL = "__total_geral__";
 

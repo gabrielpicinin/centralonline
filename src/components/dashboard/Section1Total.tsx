@@ -43,6 +43,11 @@ import {
 import { useAnimarGraficos } from "./secaoAtiva";
 
 interface Props {
+  /**
+   * Como nomear o recorte quando nenhuma unidade está filtrada. Vem do
+   * Dashboard porque depende de quem está logado — ver a nota lá.
+   */
+  rotuloTodasUnidades: string;
   /** Base já recortada pelos filtros universais do cabeçalho. */
   financial: FinancialRow[];
   membership: MembershipRow[];
@@ -273,6 +278,7 @@ function Flutuante({
 }
 
 export function Section1Total({
+  rotuloTodasUnidades,
   financial,
   membership,
   metaAnualPorUnidade,
@@ -305,7 +311,7 @@ export function Section1Total({
   // O card mostra a meta anual como está na base, sem escalar pelo filtro de mês.
   const metaTotal = metaAnual;
 
-  const tituloTotal = isAll ? "Total Geral" : `Total ${unidadesSel.join(", ")}`;
+  const tituloTotal = isAll ? rotuloTodasUnidades : `Total ${unidadesSel.join(", ")}`;
 
   // KPIs base
   /*

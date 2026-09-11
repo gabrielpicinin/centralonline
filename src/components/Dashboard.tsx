@@ -44,6 +44,25 @@ export function Dashboard() {
     return Array.from(set).sort();
   }, [financial]);
 
+  /*
+   * Como chamar "nenhum filtro de unidade" nesta sessão.
+   *
+   * Para o administrador é "Total Geral", porque é literalmente isso. Para o
+   * pastor seria mentira: ele não está vendo a rede, está vendo as igrejas
+   * dele, e chamar aquilo de Total Geral faria um número de duas unidades
+   * passar por número da Central inteira.
+   *
+   * O nome é decidido aqui, uma vez, e desce para as seções. Cada uma decidindo
+   * por si é o tipo de coisa que fica divergindo com o tempo — e divergir aqui
+   * significa duas telas discordando sobre o que o mesmo número representa.
+   */
+  const rotuloTodasUnidades = useMemo(() => {
+    if (papel !== "pastor") return "Total Geral";
+    if (unidades.length === 0) return "Nenhuma unidade";
+    if (unidades.length <= 2) return unidades.join(", ");
+    return `Minhas ${unidades.length} unidades`;
+  }, [papel, unidades.join("|")]);
+
   const defaultAno = anos[0] ?? new Date().getFullYear();
 
   /*
@@ -237,9 +256,10 @@ export function Dashboard() {
       {
         id: "total",
         numero: 1,
-        titulo: "Total Geral",
+        titulo: rotuloTodasUnidades,
         conteudo: (
           <Section1Total
+            rotuloTodasUnidades={rotuloTodasUnidades}
             financial={dados}
             membership={membership}
             metaAnualPorUnidade={metaAnualPorUnidade}
@@ -257,6 +277,7 @@ export function Dashboard() {
         titulo: "Acumulado Diário",
         conteudo: (
           <EntradasDiarias
+            rotuloTodasUnidades={rotuloTodasUnidades}
             financial={dados}
             financialBruto={financial}
             financialTodosMeses={dadosTodosMeses}
@@ -371,7 +392,7 @@ export function Dashboard() {
             options={unidades}
             selected={unidadesSel}
             onChange={setUnidadesSel}
-            allLabel="Total Geral"
+            allLabel={rotuloTodasUnidades}
             triggerClassName="min-w-[180px] flex-1"
           />
           <MultiSelect

@@ -199,6 +199,8 @@ function useLargura<T extends HTMLElement>(min = 280) {
 /* ================= componente ================= */
 
 interface Props {
+  /** Como nomear o recorte sem filtro de unidade — ver a nota no Dashboard. */
+  rotuloTodasUnidades: string;
   /** Base já recortada pelos filtros universais do cabeçalho. */
   financial: FinancialRow[];
   /**
@@ -227,6 +229,7 @@ interface Foco {
 }
 
 export function EntradasDiarias({
+  rotuloTodasUnidades,
   financial,
   financialBruto,
   financialTodosMeses,
@@ -398,7 +401,7 @@ export function EntradasDiarias({
 
   const uniTexto =
     unis.length === unidades.length
-      ? "Total Geral"
+      ? rotuloTodasUnidades
       : unis.length === 0
         ? "Nenhuma unidade"
         : unis.length === 1
