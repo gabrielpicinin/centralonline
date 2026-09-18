@@ -10,7 +10,7 @@ algo der errado, então vai direto ao ponto.
 |                         |                                                                     |
 | ----------------------- | ------------------------------------------------------------------- |
 | **O que é**             | Um site interno. Acesso pela rede da Central, via VPN.              |
-| **Roda com**            | Node 22 ou 24. Nada além disso.                                     |
+| **Roda com**            | Node **22.18.0 ou mais novo**. Use 24, como o servidor. Nada além. |
 | **Onde ficam os dados** | A pasta `dados/` — ou o caminho em `DADOS_DIR`.                     |
 | **Banco de dados**      | SQLite, um arquivo. Não há serviço de banco para manter.            |
 | **Contas**              | 1 administrador (`Financeiro`) e os pastores. Sem cadastro público. |
@@ -67,22 +67,66 @@ backup importa.
 
 ## Subir, derrubar, conferir
 
-```bash
-# Instalar dependências e compilar (uma vez, e a cada atualização)
-npm install
-npm run build
+> ### O servidor NÃO compila. Ele recebe pronto.
+>
+> Isto mudou depois de uma tentativa real: `npm run build` morreu na máquina com
+> `Ineffective mark-compacts near heap limit — JavaScript heap out of memory`.
+> Não foi azar de configuração. **O build usa cerca de 2,2 GB de memória** — medido,
+> não estimado — e a máquina não tem isso.
+>
+> A saída que se improvisou na hora foi subir `npm run dev`, o servidor de
+> desenvolvimento, em produção. Ele não é feito para isso: recompila a cada
+> requisição, expõe o código-fonte e traz ferramentas de depuração.
+>
+> O fluxo correto é: **compila-se fora, envia-se o resultado.** Quem compila é uma
+> máquina de desenvolvimento, que gera um `pacote.zip`; o servidor só recebe,
+> extrai e roda.
 
-# Rodar
+```bash
+# No servidor: extrair o pacote recebido e rodar. Só isso.
+unzip pacote.zip -d /opt/central
+cd /opt/central
 node .output/server/index.mjs
 ```
 
+O pacote traz `.output/` (a aplicação compilada), `ferramentas/` e este manual.
+**Não precisa de `npm install` nem de `node_modules`** — conferido rodando o
+`.output/` sozinho numa pasta vazia. O único requisito é o Node instalado.
+
 Variáveis de ambiente:
 
-| Variável         | Obrigatória | Para quê                                           |
-| ---------------- | ----------- | -------------------------------------------------- |
-| `SESSION_SECRET` | **sim**     | Cifra o cookie de sessão. Mínimo de 32 caracteres. |
-| `DADOS_DIR`      | não         | Pasta do banco. Sem ela, `./dados`.                |
-| `PORT`           | não         | Porta. Sem ela, 3000.                              |
+| Variável         | Obrigatória | Para quê                                                        |
+| ---------------- | ----------- | --------------------------------------------------------------- |
+| `SESSION_SECRET` | **sim**     | Cifra o cookie de sessão. Mínimo de 32 caracteres.              |
+| `DADOS_DIR`      | **sim**     | Pasta do banco, caminho absoluto. Sem ela o serviço não sobe.   |
+| `HOST`           | **sim**     | Interface de escuta. Use `127.0.0.1`. Ver o aviso abaixo.       |
+| `PORT`           | não         | Porta. Sem ela, 3000.                                            |
+
+> ### `HOST` é obrigatória na prática, e o padrão joga contra
+>
+> **Sem `HOST`, o servidor escuta em todas as interfaces.** Isso significa que
+> a aplicação fica alcançável direto por qualquer máquina da rede, na porta do
+> Node, contornando o Apache — e com ele o HTTPS, os logs de acesso e qualquer
+> regra que o proxy aplique.
+>
+> Não dá para corrigir isso pelo código deste projeto. O servidor compilado lê
+> a variável na primeira linha do arquivo que o Node executa, antes de qualquer
+> código nosso rodar:
+>
+> ```js
+> const host = process.env.NITRO_HOST || process.env.HOST;
+> ```
+>
+> Sem valor, ele passa `hostname: undefined` adiante, e o Node interpreta isso
+> como "escute em tudo". **Por isso `HOST=127.0.0.1` precisa estar na
+> configuração do serviço**, junto das outras variáveis. Com ele, só quem passa
+> pelo Apache entra.
+>
+> `NITRO_HOST` faz o mesmo e tem precedência, se algum dia for preciso.
+>
+> O servidor de desenvolvimento é outra história: lá o padrão já foi corrigido
+> para `127.0.0.1` no `vite.config.ts`. Mas o servidor de desenvolvimento não
+> deve rodar no servidor de produção de jeito nenhum.
 
 Gerar o `SESSION_SECRET`:
 
@@ -181,12 +225,22 @@ base.
 
 ## Atualizar o sistema
 
+Pelo mesmo motivo da seção anterior, a atualização **não é compilada aqui**. Quem
+mantém o código gera um `pacote.zip` novo e envia; no servidor:
+
 ```bash
-git pull
-npm install
-npm run build
-# reiniciar o serviço
+# 1. Backup ANTES, sempre
+node ferramentas/backup.mjs /caminho/do/backup
+
+# 2. Parar o serviço, trocar a aplicação, subir de novo
+pm2 stop central
+rm -rf /opt/central/.output
+unzip pacote.zip -d /opt/central
+pm2 start central
 ```
+
+A pasta de dados não é tocada por nada disso — ela fica fora do `.output/`, no
+caminho de `DADOS_DIR`, que é justamente por isso que essa variável é obrigatória.
 
 O banco não é tocado por uma atualização: tabelas novas são criadas sozinhas na
 partida, e as existentes não são alteradas. Ainda assim, **faça o backup antes** —

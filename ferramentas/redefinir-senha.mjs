@@ -20,11 +20,28 @@
  */
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes, scryptSync } from "node:crypto";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 
-const PASTA = process.env.DADOS_DIR ?? join(process.cwd(), "dados");
+const PASTA = process.env.DADOS_DIR ? resolve(process.env.DADOS_DIR) : join(process.cwd(), "dados");
 const ARQUIVO = join(PASTA, "central.db");
+
+/*
+ * O caminho aparece ANTES de qualquer ação, e sempre absoluto.
+ *
+ * Esta ferramenta troca a senha de uma conta. Trocar a senha no banco errado é
+ * pior do que não trocar: a pessoa continua sem entrar, e agora existe uma
+ * senha nova válida num arquivo que ninguém está olhando. Foi por confusão de
+ * caminho que, no servidor, esta ferramenta encontrou uma conta numa pasta que
+ * supostamente tinha sido apagada. Ver o comentário em src/lib/banco.server.ts.
+ */
+console.log(`Banco de destino: ${ARQUIVO}`);
+console.log(
+  process.env.DADOS_DIR
+    ? "  (caminho vindo de DADOS_DIR)"
+    : "  (DADOS_DIR não definida — caminho deduzido da pasta atual)",
+);
+console.log("");
 
 const usuario = process.argv[2];
 if (!usuario) {

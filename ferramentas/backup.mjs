@@ -24,8 +24,28 @@ import { DatabaseSync } from "node:sqlite";
 import { join, resolve, isAbsolute } from "node:path";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 
-const PASTA_DADOS = process.env.DADOS_DIR ?? join(process.cwd(), "dados");
+const PASTA_DADOS = process.env.DADOS_DIR
+  ? resolve(process.env.DADOS_DIR)
+  : join(process.cwd(), "dados");
 const ARQUIVO = join(PASTA_DADOS, "central.db");
+
+/*
+ * O caminho aparece ANTES de qualquer ação, e sempre absoluto.
+ *
+ * Sem DADOS_DIR este caminho depende de onde a pessoa está quando digita o
+ * comando, e no servidor isso já produziu uma confusão cara: um backup pode
+ * sair de um `central.db` e o serviço estar usando outro, sem que nada na tela
+ * indique a diferença. Ver o comentário em src/lib/banco.server.ts.
+ *
+ * Quem roda isto precisa conferir esta linha antes de confiar no arquivo que
+ * sai do outro lado.
+ */
+console.log(`Banco de origem: ${ARQUIVO}`);
+console.log(
+  process.env.DADOS_DIR
+    ? "  (caminho vindo de DADOS_DIR)"
+    : "  (DADOS_DIR não definida — caminho deduzido da pasta atual)",
+);
 
 if (!existsSync(ARQUIVO)) {
   console.error(`Não encontrei o banco em ${ARQUIVO}.`);

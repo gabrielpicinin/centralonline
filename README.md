@@ -67,27 +67,91 @@ Gerar o `SESSION_SECRET`:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
+## O gerenciador de pacotes é o npm
+
+**npm, e só npm.** O lockfile oficial é o `package-lock.json`. No servidor a
+instalação é:
+
+```bash
+npm ci
+```
+
+Não é `npm install`. O `npm ci` apaga o `node_modules`, instala exatamente as
+versões travadas no lock e falha se o lock e o `package.json` discordarem —
+enquanto o `npm install` tem liberdade para resolver versões novas.
+
+A escolha do npm não é preferência: é que ele vem junto com o Node. Este
+projeto inteiro é construído para não exigir nada extra de quem o mantém, e
+pedir um gerenciador a mais no servidor contradiria isso. Antes existia um
+`bun.lock`, que o npm não lê — e foi exatamente esse descompasso que fez uma
+instalação no servidor resolver 513 pacotes do zero, em vez de reproduzir os
+que haviam sido testados aqui.
+
+### A trava de 24 horas, e o que ela faz agora
+
+O `bunfig.toml` recusava pacotes publicados havia menos de 24 horas. A razão é
+que ataques a bibliotecas npm vivem numa janela curta: rouba-se a conta de quem
+publica, sobe-se uma versão com código a mais, e ela fica no ar até alguém
+perceber — costuma ser algumas horas. Esperar um dia elimina quase toda essa
+janela, e não custa nada a um projeto que não depende de novidade recém-saída.
+
+A trava continua, no `.npmrc`, com outra escrita: `min-release-age=1`. O bun
+contava em segundos (`86400`), o npm conta em dias. Mesmo efeito.
+
+Vale entender **quando** ela atua, porque é menos do que parece: o `npm ci` não
+resolve versão nenhuma, então no servidor a trava é irrelevante. Ela protege a
+máquina que **gera** o lock — ou seja, na hora em que alguém roda `npm install`
+para atualizar algo de propósito. Esse é o único momento em que versões novas
+entram no projeto, e é justamente o momento coberto.
+
 ## Testes
 
 ```bash
 npm test
 ```
 
-Sete testes, todos sobre a mesma coisa: garantir que um pastor nunca receba uma
-unidade que não é dele. Sem dependência — o Node 24 executa TypeScript e traz o
-próprio executor.
+Oito testes, todos sobre a mesma coisa: garantir que um pastor nunca receba uma
+unidade que não é dele. Sem dependência — o próprio Node executa TypeScript e
+traz o executor de testes.
+
+## Qual Node
+
+Mínimo **22.18.0**, declarado em `engines`. O número não é escolha de gosto: são
+dois recursos do Node que este projeto usa sem flag nenhuma, e cada um tem a sua
+versão de estreia.
+
+| Recurso                                   | Livre de flag desde |
+| ----------------------------------------- | ------------------- |
+| `node:sqlite` — o banco                   | 22.13.0             |
+| TypeScript executado direto — os testes   | 22.18.0             |
+
+O piso é o maior dos dois. O `.nvmrc` diz **24**, que é a linha instalada no
+servidor: o `engines` marca o mínimo aceitável, o `.nvmrc` marca o que se deve
+usar, e os dois só são iguais por acidente em projetos que não pensaram nisso.
 
 **Rode antes de publicar.** Se algum falhar, não publique.
 
 ## Compilando para o servidor
 
+O build **não roda no servidor** — ele precisa de cerca de 2,2 GB de memória,
+medido, e a máquina da Central não tem. Compila-se aqui e envia-se o resultado.
+
 ```bash
+npm ci
 npm run build
-node .output/server/index.mjs
 ```
 
-O build mira `node-server`. Um servidor Node comum, sem dependência de
-plataforma.
+O build mira `node-server`: um servidor Node comum, sem dependência de
+plataforma. O resultado é `.output/`, que roda sozinho — sem `node_modules`,
+sem `package.json`, sem nada mais. Conferido extraindo só essa pasta para um
+diretório vazio.
+
+Para montar o pacote que vai ao servidor por FTP, com `.output/`,
+`ferramentas/` e o `OPERACAO.md` na raiz do zip:
+
+```bash
+node ferramentas/empacotar.mjs
+```
 
 ## Onde as coisas estão
 

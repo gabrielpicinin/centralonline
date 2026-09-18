@@ -12,15 +12,50 @@
  * copiar um arquivo. Ver o plano de implantação.
  */
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import type { FinancialRow, MembershipRow, SaldoRow } from "./parsers";
 
 /*
  * Onde o arquivo mora. É esta pasta que precisa entrar na rotina de backup do
  * TI — não há nada de valor fora dela.
+ *
+ * Em produção a variável é OBRIGATÓRIA, e isso vem de um episódio real no
+ * servidor: rodaram `rm -rf dados/` e, logo depois, a ferramenta de redefinir
+ * senha ainda encontrou a conta do Financeiro. Se a pasta tivesse sido de fato
+ * apagada, não haveria conta para redefinir — eram dois `central.db`
+ * diferentes. A causa é que o caminho saía de `process.cwd()`, e o PM2 roda o
+ * serviço a partir de um diretório de trabalho próprio, que não é a pasta de
+ * onde alguém digita os comandos.
+ *
+ * Um caminho que depende de onde o processo foi iniciado não é um caminho: é
+ * um palpite. Exigir o valor explícito elimina a ambiguidade em vez de
+ * documentá-la.
+ *
+ * Fora de produção o padrão continua `./dados`, para não atrapalhar quem
+ * desenvolve nem os testes — que definem `DADOS_DIR` antes de importar este
+ * módulo, de propósito, porque o caminho é lido aqui na carga.
  */
-const PASTA = process.env.DADOS_DIR ?? join(process.cwd(), "dados");
+function resolverPastaDeDados(): string {
+  const definida = process.env.DADOS_DIR;
+  // `resolve` para que o caminho registrado no log seja absoluto mesmo quando
+  // alguém passa um valor relativo — que era exatamente a origem da confusão.
+  if (definida) return resolve(definida);
+
+  if (process.env.NODE_ENV === "production") {
+    console.error(
+      "[banco] DADOS_DIR não está definida. Em produção o caminho do banco " +
+        "precisa ser explícito: o diretório de trabalho do serviço não é " +
+        "confiável, e sem a variável não há como saber qual central.db está " +
+        "em uso. Defina-a na configuração do serviço, com caminho absoluto.",
+    );
+    throw new Error("Internal server error");
+  }
+
+  return join(process.cwd(), "dados");
+}
+
+const PASTA = resolverPastaDeDados();
 const ARQUIVO = join(PASTA, "central.db");
 
 let db: DatabaseSync | null = null;
@@ -29,7 +64,23 @@ let db: DatabaseSync | null = null;
 function conectar(): DatabaseSync {
   if (db) return db;
   mkdirSync(PASTA, { recursive: true });
+
+  // Conferido ANTES de abrir: `new DatabaseSync` cria o arquivo se não existir,
+  // e depois disso a resposta seria sempre "existe".
+  const jaExistia = existsSync(ARQUIVO);
   const conexao = new DatabaseSync(ARQUIVO);
+
+  /*
+   * Uma linha, no arranque, com o caminho absoluto e o estado do arquivo.
+   *
+   * Existe porque durante dias ninguém soube qual `central.db` o servidor
+   * estava usando de verdade. Com esta linha, conferir a implantação deixa de
+   * ser adivinhação — e o caso mais perigoso passa a ser visível na hora: um
+   * serviço que diz "criado agora, vazio" quando deveria ter encontrado o
+   * banco existente está apontando para o lugar errado, e a tela de primeiro
+   * acesso vai reaparecer como se o sistema fosse novo.
+   */
+  console.info(`[banco] ${ARQUIVO} — ${jaExistia ? "arquivo existente" : "criado agora, vazio"}`);
 
   /*
    * WAL permite ler enquanto outra conexão escreve. Sem isso, um upload de 20
