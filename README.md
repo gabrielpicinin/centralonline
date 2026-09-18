@@ -98,6 +98,24 @@ janela, e não custa nada a um projeto que não depende de novidade recém-saíd
 A trava continua, no `.npmrc`, com outra escrita: `min-release-age=1`. O bun
 contava em segundos (`86400`), o npm conta em dias. Mesmo efeito.
 
+**Ela é real, e foi verificada por comportamento — não por a chave ser aceita.**
+O npm guarda em silêncio configurações que não reconhece, então "ele aceitou"
+não prova nada. O teste que prova: com `min-release-age=100000`, o npm recusa
+instalar qualquer coisa, com `ENOVERSIONS — No versions available`; sem a chave,
+resolve normalmente. Quem filtra é o resolvedor.
+
+| | |
+| ------------------------- | ------------------------------------------------ |
+| `min-release-age` | npm **11.10.0** — [npm/cli#8965](https://github.com/npm/cli/pull/8965) |
+| `min-release-age-exclude` | npm **11.17.0** |
+| Documentação | [docs.npmjs.com/cli/v11/using-npm/config](https://docs.npmjs.com/cli/v11/using-npm/config) |
+
+**Exige npm 11.17.0 ou mais novo.** Num npm mais antigo, as chaves são
+ignoradas caladas — sem erro, sem aviso, e sem proteção. Confira com `npm -v`
+antes de confiar nela. Isso vale para a máquina que gera o `package-lock.json`;
+no servidor não muda nada, porque lá se usa `npm ci`, que não resolve versão
+nenhuma.
+
 Vale entender **quando** ela atua, porque é menos do que parece: o `npm ci` não
 resolve versão nenhuma, então no servidor a trava é irrelevante. Ela protege a
 máquina que **gera** o lock — ou seja, na hora em que alguém roda `npm install`

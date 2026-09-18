@@ -102,6 +102,22 @@ Variáveis de ambiente:
 | `HOST`           | **sim**     | Interface de escuta. Use `127.0.0.1`. Ver o aviso abaixo.       |
 | `PORT`           | não         | Porta. Sem ela, 3000.                                            |
 
+> ### `DADOS_DIR` é exigida SEMPRE, e não depende de `NODE_ENV`
+>
+> O servidor compilado **recusa subir sem ela**, ponto. Não há modo de
+> desenvolvimento, não há valor padrão, e definir `NODE_ENV` para outra coisa
+> não afrouxa nada.
+>
+> Vale dizer isso com todas as letras porque o código-fonte dá a impressão
+> contrária: lá a exigência está escrita como "se estiver em produção". Acontece
+> que o empacotador resolve essa comparação **durante o build** e a remove — no
+> arquivo que chega ao servidor, a exigência é incondicional, e o caminho
+> alternativo `./dados` nem existe mais.
+>
+> Na prática, para quem opera: o `.output/` sempre exige `DADOS_DIR`. Se você
+> compilar e rodar na sua própria máquina para testar, vai precisar dela
+> também — não é defeito.
+
 > ### `HOST` é obrigatória na prática, e o padrão joga contra
 >
 > **Sem `HOST`, o servidor escuta em todas as interfaces.** Isso significa que

@@ -35,6 +35,16 @@ import type { FinancialRow, MembershipRow, SaldoRow } from "./parsers";
  * Fora de produção o padrão continua `./dados`, para não atrapalhar quem
  * desenvolve nem os testes — que definem `DADOS_DIR` antes de importar este
  * módulo, de propósito, porque o caminho é lido aqui na carga.
+ *
+ * Só que esse "fora de produção" vale apenas RODANDO DO FONTE. No servidor
+ * compilado ele não existe: o empacotador troca `process.env.NODE_ENV` pelo
+ * texto "production" em tempo de build, o `if` abaixo vira sempre-verdadeiro, e
+ * o `return` do fim — o tal padrão `./dados` — é eliminado como código morto.
+ * Conferido no bundle: a função que sai de lá ou devolve o DADOS_DIR ou lança.
+ *
+ * O efeito é bom e fica assim de propósito: o servidor compilado não tem como
+ * silenciosamente cair no `./dados` de um diretório de trabalho qualquer, que é
+ * exatamente o defeito que este comentário todo existe para descrever.
  */
 function resolverPastaDeDados(): string {
   const definida = process.env.DADOS_DIR;

@@ -23,9 +23,26 @@
  */
 
 /*
- * Só em produção. Em desenvolvimento os padrões existem justamente para não
- * atrapalhar, e durante o `npm run build` o Nitro não executa plugins — eles
- * são código de runtime, empacotados para rodar no servidor.
+ * ATENÇÃO ao ler esta condição: ela NÃO existe no servidor compilado.
+ *
+ * O empacotador substitui `process.env.NODE_ENV` pelo texto "production" em
+ * tempo de build, a comparação vira `"production" === "production"`, e o `if`
+ * inteiro é dobrado para sempre-verdadeiro e removido. Conferido no
+ * `.output/server/index.mjs`: o que sai é um bloco solto, e a palavra NODE_ENV
+ * não sobrevive em arquivo nenhum do servidor compilado.
+ *
+ * Ou seja, na prática:
+ *
+ *   rodando do fonte (npm run dev, npm test)  → a condição vale, e em
+ *                                               desenvolvimento nada é exigido
+ *   rodando o .output/ compilado              → SEMPRE exige, não importa o
+ *                                               NODE_ENV que o serviço definir
+ *
+ * O resultado é melhor do que a intenção original e fica de propósito: um
+ * servidor compilado não tem como subir mal configurado por alguém ter
+ * esquecido de definir NODE_ENV. Só não se pode dizer por aí que "vale apenas
+ * em produção", porque quem rodar o build na própria máquina para testar vai
+ * esbarrar nisto sem esperar.
  */
 if (process.env.NODE_ENV === "production") {
   const faltando: string[] = [];
