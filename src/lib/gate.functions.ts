@@ -11,6 +11,7 @@ import { useSession, getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { contarPerfis, criarPerfil, buscarPorUsuario, buscarPorId } from "./banco.server";
 import { gerarHash, conferirSenha, queimarTempoDeSenha } from "./senha.server";
+import { origemDaRequisicao } from "./origem";
 import { getSessionConfig, type DadosSessao } from "./sessao.server";
 
 /** O usuário do administrador, definido pela Central. */
@@ -41,14 +42,18 @@ function atrasoDaOrigem(chave: string): number {
   return Math.min(ATRASO_BASE_MS * 2 ** reg.falhas, ATRASO_MAX_MS);
 }
 
+/*
+ * O balde do freio. A regra inteira — e o porquê de cada parte dela — está em
+ * ./origem.ts; aqui fica só a ponte com a requisição.
+ *
+ * Em resumo: `cf-connecting-ip` saiu, porque sem Cloudflare na frente ele é
+ * texto que o próprio cliente escreve, e tinha precedência sobre tudo. E do
+ * `x-forwarded-for` passa a valer o ÚLTIMO elemento, não o primeiro, porque o
+ * Apache acrescenta no fim da lista — o primeiro era o que o atacante mandava.
+ */
 function chaveDeOrigem(): string {
   try {
-    const req = getRequest();
-    return (
-      req?.headers.get("cf-connecting-ip") ??
-      req?.headers.get("x-forwarded-for")?.split(",")[0].trim() ??
-      "desconhecido"
-    );
+    return origemDaRequisicao(getRequest()?.headers.get("x-forwarded-for"));
   } catch {
     return "desconhecido";
   }

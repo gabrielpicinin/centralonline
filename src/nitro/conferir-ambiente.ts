@@ -66,6 +66,23 @@ if (process.env.NODE_ENV === "production") {
   }
 
   /*
+   * COOKIE_SECURE não tem padrão de propósito. Ver a explicação longa em
+   * sessao.server.ts: qualquer chute aqui erra em silêncio, para um lado ou
+   * para o outro. Quem publica declara em que mundo está.
+   */
+  const cookieSecure = process.env.COOKIE_SECURE;
+  if (cookieSecure !== "true" && cookieSecure !== "false") {
+    faltando.push(
+      cookieSecure === undefined
+        ? "COOKIE_SECURE — 'true' se o site é servido por HTTPS, 'false' se é HTTP. " +
+            "Sem ela o login quebra sem deixar rastro: com HTTPS ausente e a flag " +
+            "ligada, o navegador descarta o cookie de sessão e a pessoa cai fora na " +
+            "tela seguinte, sem mensagem de erro."
+        : `COOKIE_SECURE — está como "${cookieSecure}"; aceita só 'true' ou 'false'.`,
+    );
+  }
+
+  /*
    * HOST não entra como obrigatória, e é decisão consciente: sem ela o Nitro
    * escuta em todas as interfaces, o que é inseguro atrás de um proxy mas não é
    * inválido — há instalações em que é o que se quer. Avisar alto é melhor do
@@ -76,6 +93,26 @@ if (process.env.NODE_ENV === "production") {
       "[ambiente] HOST não está definida: o servidor vai escutar em TODAS as " +
         "interfaces de rede. Atrás de um proxy reverso, isso deixa a aplicação " +
         "alcançável por fora dele, sem HTTPS. Defina HOST=127.0.0.1 no serviço.",
+    );
+  }
+
+  /*
+   * O aviso de conexão não cifrada, repetido a cada subida do serviço, de
+   * propósito.
+   *
+   * Operar sem TLS na rede interna foi decisão do TI, e é uma decisão legítima
+   * de quem conhece a rede. Mas decisão assim tem um jeito de virar esquecimento:
+   * seis meses depois ninguém lembra que foi escolhido, e passa a parecer que
+   * sempre foi assim. Uma linha no journal a cada reinício mantém o registro
+   * vivo, e some sozinha no dia em que houver certificado.
+   */
+  if (cookieSecure === "false") {
+    console.warn(
+      "\n[ambiente] ATENÇÃO: sessão sem cifragem (COOKIE_SECURE=false).\n" +
+        "  O cookie de sessão trafega em texto claro, e quem estiver na mesma rede\n" +
+        "  consegue lê-lo e assumir a sessão de quem está logado. Isto é uma decisão\n" +
+        "  de implantação, não um defeito: o sistema está publicado em HTTP.\n" +
+        "  No dia em que houver certificado, troque para COOKIE_SECURE=true.\n",
     );
   }
 

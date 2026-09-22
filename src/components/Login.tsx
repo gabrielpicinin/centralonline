@@ -39,6 +39,26 @@ export function Login() {
       .catch(() => setPrecisaConfigurar(false));
   }, []);
 
+  /*
+   * Se esta pessoa chegou por uma conexão sem cifragem.
+   *
+   * Olha o NAVEGADOR, e não a variável do servidor, de propósito: o que importa
+   * para quem está digitando a senha é como o pedido dela viajou. O servidor
+   * pode estar configurado de um jeito e alguém chegar por outro caminho — por
+   * IP, por um proxy diferente — e nesse caso é a experiência real que deve
+   * mandar no aviso.
+   *
+   * `isSecureContext` em vez de comparar o protocolo com "https:": ele já trata
+   * localhost como confiável, que é o certo. Quem desenvolve na própria máquina
+   * não trafega nada por rede nenhuma e não precisa ver aviso.
+   *
+   * Calculado depois da montagem, nunca durante a renderização: `window` não
+   * existe no servidor, e decidir isto na renderização faria o HTML do servidor
+   * discordar do que o navegador monta.
+   */
+  const [semCifragem, setSemCifragem] = useState(false);
+  useEffect(() => setSemCifragem(!window.isSecureContext), []);
+
   const entrar = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr("");
@@ -209,6 +229,20 @@ export function Login() {
               {loading ? "Entrando..." : "Entrar"}
             </Button>
           </form>
+        )}
+
+        {/*
+          Informativo, não alerta. Fica no rodapé do cartão, na cor mais apagada
+          da paleta e sem ícone de perigo: quem usa não escolheu isto e não pode
+          resolver, então assustar só geraria chamado para o TI. O que a linha
+          faz é evitar a surpresa de descobrir depois — e deixar a decisão de
+          implantação visível no próprio produto, não só num documento que
+          ninguém abre.
+        */}
+        {semCifragem && (
+          <p className="mt-6 border-t border-line-soft pt-4 text-center text-xs text-ink-3">
+            Conexão não cifrada. Use apenas na rede interna.
+          </p>
         )}
       </motion.div>
     </div>

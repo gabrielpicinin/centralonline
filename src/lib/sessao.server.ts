@@ -24,6 +24,38 @@ export interface DadosSessao {
   papel?: "admin" | "pastor";
 }
 
+/*
+ * A flag `Secure` do cookie, vinda do ambiente em vez de fixa no código.
+ *
+ * Por que deixou de ser constante: `Secure` faz o navegador DESCARTAR o cookie
+ * quando a conexão não é cifrada. Com `true` fixo e o site em HTTP, o login
+ * parece funcionar e a sessão some na tela seguinte — sem erro, sem log, sem
+ * pista. Foi exatamente o que travou a implantação. O valor certo não é uma
+ * propriedade do código, é uma propriedade de COMO o sistema foi publicado, e
+ * portanto pertence a quem publica.
+ *
+ * Por que é exigida em vez de ter padrão: qualquer padrão aqui erra metade das
+ * vezes, e erra em silêncio. Um padrão `true` repete a falha acima; um padrão
+ * `false` é pior — entregaria sessão sem cifragem a uma instalação que tem
+ * HTTPS, e ninguém perceberia, porque tudo funcionaria. Não existe valor seguro
+ * para chutar, então não se chuta: quem sobe o serviço declara em que mundo
+ * está, e o serviço se recusa a subir sem isso.
+ */
+function exigirCookieSecure(): boolean {
+  const valor = process.env.COOKIE_SECURE;
+  if (valor === "true") return true;
+  if (valor === "false") return false;
+
+  console.error(
+    valor === undefined
+      ? "[sessao] COOKIE_SECURE não está definida. Use 'true' quando o site é " +
+          "servido por HTTPS e 'false' quando é HTTP. Não há padrão: um valor " +
+          "errado aqui quebra o login sem deixar rastro."
+      : `[sessao] COOKIE_SECURE tem o valor "${valor}", que não é 'true' nem 'false'.`,
+  );
+  throw new Error("Internal server error");
+}
+
 function exigirVariavel(nome: "SESSION_SECRET"): string {
   const valor = process.env[nome];
   if (!valor) {
@@ -54,7 +86,12 @@ export function getSessionConfig() {
     maxAge: 60 * 60 * 24 * 7, // 7 dias
     cookie: {
       httpOnly: true,
-      secure: true,
+      /*
+       * Ver `exigirCookieSecure` acima. Em HTTPS isto é `true` e o cookie só
+       * viaja cifrado; em HTTP precisa ser `false`, senão o navegador descarta
+       * o cookie e ninguém consegue entrar.
+       */
+      secure: exigirCookieSecure(),
       /*
        * "lax", não "none". "none" manda o cookie de sessão junto em requisições
        * vindas de outros sites, que é a porta de entrada de CSRF; só faz sentido

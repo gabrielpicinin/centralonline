@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MultiSelect } from "@/components/dashboard/MultiSelect";
+import { copiarTexto } from "@/lib/copiar";
 import {
   listarPastoresServer,
   criarPastorServer,
@@ -62,7 +63,12 @@ export function UnidadesPorPastor() {
 
   /* A senha aparece uma vez, logo depois de gerada. Não é guardada em texto. */
   const [senhaMostrada, setSenhaMostrada] = useState<{ nome: string; senha: string } | null>(null);
-  const [copiada, setCopiada] = useState(false);
+  /*
+   * Três estados, e não um booleano: "não tentei" não é a mesma coisa que
+   * "tentei e falhou". Com booleano, a falha era indistinguível do repouso e a
+   * interface acabava afirmando sucesso — ver src/lib/copiar.ts.
+   */
+  const [copiada, setCopiada] = useState<"nao" | "sim" | "falhou">("nao");
 
   const [abrindoCadastro, setAbrindoCadastro] = useState(false);
   const [novoNome, setNovoNome] = useState("");
@@ -143,7 +149,7 @@ export function UnidadesPorPastor() {
         return;
       }
       setSenhaMostrada({ nome: r.perfil.nome, senha: r.senha });
-      setCopiada(false);
+      setCopiada("nao");
       setNovoNome("");
       setNovoUsuario("");
       setAbrindoCadastro(false);
@@ -161,7 +167,7 @@ export function UnidadesPorPastor() {
       const r = await regerar({ data: { perfilId: p.id } });
       if (r.ok) {
         setSenhaMostrada({ nome: p.nome, senha: r.senha });
-        setCopiada(false);
+        setCopiada("nao");
       }
     } catch {
       setErro("Não consegui gerar a senha.");
@@ -238,13 +244,21 @@ export function UnidadesPorPastor() {
               size="sm"
               variant="outline"
               onClick={() => {
-                void navigator.clipboard?.writeText(senhaMostrada.senha);
-                setCopiada(true);
+                /*
+                 * O estado só muda depois da resposta, e segue o que ela diz.
+                 * Confirmar antes de saber era o defeito antigo: o botão ficava
+                 * verde em HTTP sem nada ter sido copiado.
+                 */
+                void copiarTexto(senhaMostrada.senha).then((deuCerto) =>
+                  setCopiada(deuCerto ? "sim" : "falhou"),
+                );
               }}
               className="gap-2 border-line-strong bg-panel-2 text-ink hover:border-acc hover:bg-panel-2 hover:text-ink"
             >
-              {copiada ? <Check className="h-4 w-4 text-pos" /> : <Copy className="h-4 w-4" />}
-              {copiada ? "Copiada" : "Copiar"}
+              {copiada === "sim" && <Check className="h-4 w-4 text-pos" />}
+              {copiada === "falhou" && <AlertTriangle className="h-4 w-4 text-[#E9B949]" />}
+              {copiada === "nao" && <Copy className="h-4 w-4" />}
+              {copiada === "sim" ? "Copiada" : copiada === "falhou" ? "Não copiou" : "Copiar"}
             </Button>
             <button
               type="button"
@@ -254,6 +268,21 @@ export function UnidadesPorPastor() {
               Já anotei, pode fechar
             </button>
           </div>
+
+          {/*
+            Só aparece quando a cópia falhou de verdade. A senha continua na
+            tela, acima, justamente para este caso: a saída é selecioná-la com o
+            mouse. Dizer isso é o mínimo — o contrário seria deixar a pessoa
+            fechar o aviso achando que copiou.
+          */}
+          {copiada === "falhou" && (
+            <p className="mt-3 text-sm text-[#E9B949]">
+              O navegador não deixou copiar automaticamente — isso acontece quando o site é aberto
+              sem HTTPS.{" "}
+              <span className="text-ink">Selecione a senha acima com o mouse e copie</span> antes de
+              fechar este aviso.
+            </p>
+          )}
         </div>
       )}
 

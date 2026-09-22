@@ -95,12 +95,30 @@ O pacote traz `.output/` (a aplicação compilada), `ferramentas/` e este manual
 
 Variáveis de ambiente:
 
-| Variável         | Obrigatória | Para quê                                                        |
-| ---------------- | ----------- | --------------------------------------------------------------- |
-| `SESSION_SECRET` | **sim**     | Cifra o cookie de sessão. Mínimo de 32 caracteres.              |
-| `DADOS_DIR`      | **sim**     | Pasta do banco, caminho absoluto. Sem ela o serviço não sobe.   |
-| `HOST`           | **sim**     | Interface de escuta. Use `127.0.0.1`. Ver o aviso abaixo.       |
-| `PORT`           | não         | Porta. Sem ela, 3000.                                            |
+| Variável         | Obrigatória | Para quê                                                             |
+| ---------------- | ----------- | -------------------------------------------------------------------- |
+| `SESSION_SECRET` | **sim**     | Cifra o cookie de sessão. Mínimo de 32 caracteres.                   |
+| `DADOS_DIR`      | **sim**     | Pasta do banco, caminho absoluto. Sem ela o serviço não sobe.        |
+| `COOKIE_SECURE`  | **sim**     | `true` com HTTPS, `false` sem. Sem ela o serviço não sobe.           |
+| `HOST`           | **sim**     | Interface de escuta. Use `127.0.0.1`. Ver o aviso abaixo.            |
+| `PORT`           | não         | Porta. Sem ela, 3000.                                                 |
+
+> ### `COOKIE_SECURE` não tem padrão, e isso é de propósito
+>
+> Ela controla a flag `Secure` do cookie de sessão, que manda o navegador
+> descartar o cookie quando a conexão não é cifrada.
+>
+> **Valor errado quebra o login sem deixar rastro.** Com o site em HTTP e a flag
+> em `true`, a pessoa digita a senha, o servidor responde que deu certo, e a
+> tela seguinte a devolve para o login — sem erro, sem log, sem pista. Foi o que
+> travou a primeira tentativa de implantação.
+>
+> Não existe padrão seguro para chutar. `true` repete essa falha numa instalação
+> sem HTTPS; `false` seria pior, porque entregaria sessão sem cifragem a uma
+> instalação **com** HTTPS e ninguém perceberia — tudo funcionaria. Por isso o
+> serviço se recusa a subir sem a variável: quem publica é quem sabe.
+>
+> Nesta implantação: **`COOKIE_SECURE=false`**.
 
 > ### `DADOS_DIR` é exigida SEMPRE, e não depende de `NODE_ENV`
 >
@@ -161,6 +179,64 @@ curl -I http://localhost:3000/
 
 `HTTP/1.1 200` significa de pé. Qualquer outra coisa, ou nenhuma resposta,
 significa que o serviço caiu — reinicie-o.
+
+---
+
+## Operando sem HTTPS
+
+A implantação atual roda em `http://fin.central.online`, sem certificado. Foi
+decisão do TI, e o sistema está configurado para funcionar bem dentro dela em
+vez de meio quebrado. Esta seção diz o que isso implica e o que muda no dia em
+que houver certificado.
+
+### O que fica exposto
+
+O tráfego entre o navegador e o Apache viaja em texto claro. Na prática:
+
+- **O cookie de sessão é legível** por quem estiver na mesma rede com um
+  farejador de pacotes. Quem o copiar assume a sessão de quem está logado, sem
+  precisar da senha.
+- **A senha digitada no login viaja em claro**, na primeira vez que a pessoa
+  entra.
+- **Os números do dashboard viajam em claro** — receitas, despesas e metas por
+  unidade.
+
+O que **não** fica exposto: as senhas guardadas. Elas estão em *hash* no banco e
+não trafegam em momento nenhum, nem cifradas nem em claro.
+
+### O que sustenta a segurança no lugar do TLS
+
+- A rede é interna, alcançável por VPN. Quem consegue farejar o tráfego já está
+  dentro dela.
+- O freio de força bruta do login foi refeito para não ser contornável — sem
+  TLS, ele é a única defesa que sobra contra tentativa de senha. Ver
+  `src/lib/origem.ts`.
+- A aplicação escuta só em `127.0.0.1`, então tudo passa pelo Apache.
+
+### O que é visível para quem usa
+
+A tela de login mostra, no rodapé, **"Conexão não cifrada. Use apenas na rede
+interna."** — discreto, permanente, e some sozinho quando houver HTTPS. E o
+serviço registra um aviso no journal a cada subida, para a decisão não virar
+esquecimento com o tempo.
+
+Um efeito colateral aparece no cadastro de pastor: **o botão de copiar a senha
+pode não funcionar**, porque os navegadores bloqueiam o acesso à área de
+transferência fora de HTTPS. Quando isso acontece, a tela diz e pede para
+selecionar a senha com o mouse. Ela nunca marca "Copiada" sem ter copiado.
+
+### No dia em que houver certificado
+
+Três passos, nesta ordem:
+
+1. Trocar para **`COOKIE_SECURE=true`** na configuração do serviço.
+2. Reiniciar. O aviso do journal some, e o rodapé da tela de login some junto —
+   nenhum dos dois precisa ser editado à mão.
+3. Conferir que o login continua funcionando. Se a pessoa entrar e cair de volta
+   na tela de login, é sinal de que o HTTPS não está de fato terminando no
+   Apache, e a variável voltou a discordar da realidade.
+
+Nada mais muda. Não há URL escrita no código, nem redirecionamento a ajustar.
 
 ---
 
