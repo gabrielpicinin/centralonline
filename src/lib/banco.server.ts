@@ -181,7 +181,9 @@ function aplicarEsquema(c: DatabaseSync) {
       papel      TEXT    NOT NULL CHECK (papel IN ('admin', 'pastor')),
       senha_hash TEXT    NOT NULL,
       ativo      INTEGER NOT NULL DEFAULT 1,
-      criado_em  TEXT    NOT NULL
+      criado_em  TEXT    NOT NULL,
+      ultimo_acesso TEXT,
+      senha_cifrada TEXT
     );
 
     /* Quais unidades cada perfil enxerga. Sem linha aqui, não enxerga nenhuma. */
@@ -226,6 +228,32 @@ function migrar(c: DatabaseSync) {
      * só finalizarCarga preenche esse campo.
      */
     c.exec("UPDATE cargas SET concluida = 1 WHERE linhas > 0 OR ativa = 1");
+  }
+
+  const colunasPerfis = colunas("perfis");
+
+  /*
+   * Quando cada pessoa entrou pela última vez. Nulo quer dizer "nunca entrou",
+   * que é informação útil por si: o pastor que recebeu a senha e não usou.
+   *
+   * Contas criadas antes desta coluna ficam nulas, e a tela diz "nunca entrou"
+   * até o próximo login delas — não há como reconstruir o passado.
+   */
+  if (!colunasPerfis.includes("ultimo_acesso")) {
+    c.exec("ALTER TABLE perfis ADD COLUMN ultimo_acesso TEXT");
+  }
+
+  /*
+   * A senha do pastor, recuperável, para o administrador poder mostrá-la de
+   * novo. Cifrada — ver cifrarSenha em senha.server.ts para o porquê de cifrar
+   * algo que o próprio sistema vai decifrar.
+   *
+   * Contas criadas antes desta coluna ficam nulas. A senha delas existe só como
+   * hash e não pode ser recuperada por ninguém: para mostrá-la, é preciso gerar
+   * uma nova uma vez.
+   */
+  if (!colunasPerfis.includes("senha_cifrada")) {
+    c.exec("ALTER TABLE perfis ADD COLUMN senha_cifrada TEXT");
   }
 }
 
@@ -470,17 +498,20 @@ export function criarPerfil(dados: {
   nome: string;
   papel: "admin" | "pastor";
   senhaHash: string;
+  /** Só para pastores. O administrador nunca tem senha recuperável. */
+  senhaCifrada?: string | null;
 }): Perfil {
   const c = conectar();
   c.prepare(
-    `INSERT INTO perfis (chave, usuario, nome, papel, senha_hash, ativo, criado_em)
-     VALUES (?, ?, ?, ?, ?, 1, ?)`,
+    `INSERT INTO perfis (chave, usuario, nome, papel, senha_hash, senha_cifrada, ativo, criado_em)
+     VALUES (?, ?, ?, ?, ?, ?, 1, ?)`,
   ).run(
     chaveDe(dados.usuario),
     dados.usuario.trim(),
     dados.nome.trim(),
     dados.papel,
     dados.senhaHash,
+    dados.papel === "pastor" ? (dados.senhaCifrada ?? null) : null,
     new Date().toISOString(),
   );
   const { id } = c.prepare("SELECT last_insert_rowid() AS id").get() as { id: number };
@@ -525,8 +556,48 @@ export function buscarPorId(id: number): Perfil | null {
   };
 }
 
-export function trocarSenha(perfilId: number, senhaHash: string) {
-  conectar().prepare("UPDATE perfis SET senha_hash = ? WHERE id = ?").run(senhaHash, perfilId);
+/*
+ * Hash e senha cifrada mudam NO MESMO comando, e isso não é detalhe.
+ *
+ * Se fossem dois UPDATEs e o segundo falhasse, o hash seria o da senha nova e a
+ * cifrada continuaria sendo a da antiga. O "Mostrar senha" exibiria então uma
+ * senha que não funciona mais — e o administrador a passaria ao pastor com toda
+ * a confiança. Mostrar senha errada é pior do que não mostrar nenhuma.
+ *
+ * `senhaCifrada` nulo apaga a recuperável: é o que a ferramenta de emergência
+ * faz, porque ela troca a senha sem ter como cifrar a nova.
+ */
+export function trocarSenha(perfilId: number, senhaHash: string, senhaCifrada: string | null) {
+  conectar()
+    .prepare("UPDATE perfis SET senha_hash = ?, senha_cifrada = ? WHERE id = ?")
+    .run(senhaHash, senhaCifrada, perfilId);
+}
+
+/**
+ * Anota que a pessoa acabou de entrar.
+ *
+ * Chamado só no login bem-sucedido, que neste sistema é a mesma coisa que
+ * "entrou no dashboard": toda carga de página começa na tela de login (ver
+ * appState.tsx), então não existe entrada que não passe por aqui.
+ */
+export function registrarAcesso(perfilId: number) {
+  conectar()
+    .prepare("UPDATE perfis SET ultimo_acesso = ? WHERE id = ?")
+    .run(new Date().toISOString(), perfilId);
+}
+
+/**
+ * A senha cifrada de um PASTOR, para o administrador mostrar.
+ *
+ * O filtro por papel está na consulta, e não só em quem chama: mesmo que um
+ * caminho futuro esqueça de conferir, esta função não devolve nada de uma conta
+ * de administrador — cuja senha, de resto, nunca é gravada recuperável.
+ */
+export function senhaCifradaDoPastor(perfilId: number): string | null {
+  const r = conectar()
+    .prepare("SELECT senha_cifrada FROM perfis WHERE id = ? AND papel = 'pastor'")
+    .get(perfilId) as LinhaSQL | undefined;
+  return r?.senha_cifrada == null ? null : txt(r.senha_cifrada);
 }
 
 /** As unidades liberadas para um perfil. Lista vazia significa nenhuma. */
@@ -541,6 +612,15 @@ export function unidadesDoPerfil(perfilId: number): string[] {
 
 export interface PastorComUnidades extends Perfil {
   unidades: string[];
+  /** ISO do último login, ou nulo se nunca entrou. */
+  ultimoAcesso: string | null;
+  /**
+   * Se existe senha recuperável para mostrar. Só o SIM ou NÃO: a senha em si
+   * não viaja na listagem, e sai apenas quando o administrador pede, pessoa por
+   * pessoa. Uma lista que trouxesse todas deixaria 17 senhas no navegador toda
+   * vez que a tela abrisse.
+   */
+  temSenhaVisivel: boolean;
 }
 
 /**
@@ -553,7 +633,9 @@ export function listarPastores(): PastorComUnidades[] {
   const c = conectar();
   const perfis = c
     .prepare(
-      "SELECT id, usuario, nome, papel, ativo FROM perfis WHERE papel = 'pastor' ORDER BY nome",
+      `SELECT id, usuario, nome, papel, ativo, ultimo_acesso,
+              senha_cifrada IS NOT NULL AS tem_senha_visivel
+         FROM perfis WHERE papel = 'pastor' ORDER BY nome`,
     )
     .all() as LinhaSQL[];
 
@@ -574,6 +656,8 @@ export function listarPastores(): PastorComUnidades[] {
     papel: txt(r.papel) as "admin" | "pastor",
     ativo: !!r.ativo,
     unidades: porPerfil.get(num(r.id)) ?? [],
+    ultimoAcesso: r.ultimo_acesso == null ? null : txt(r.ultimo_acesso),
+    temSenhaVisivel: !!r.tem_senha_visivel,
   }));
 }
 

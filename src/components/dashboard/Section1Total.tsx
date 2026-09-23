@@ -48,6 +48,12 @@ interface Props {
    * Dashboard porque depende de quem está logado — ver a nota lá.
    */
   rotuloTodasUnidades: string;
+  /**
+   * Se os cards de Receita e Despesa Total leem "Crédito 2" / "Débito 2" em
+   * vez de "Crédito" / "Débito". Decidido no Dashboard — ver a nota lá sobre
+   * quando isso vale e por quê.
+   */
+  usarColunas2: boolean;
   /** Base já recortada pelos filtros universais do cabeçalho. */
   financial: FinancialRow[];
   membership: MembershipRow[];
@@ -279,6 +285,7 @@ function Flutuante({
 
 export function Section1Total({
   rotuloTodasUnidades,
+  usarColunas2,
   financial,
   membership,
   metaAnualPorUnidade,
@@ -326,6 +333,10 @@ export function Section1Total({
   const agregados = useMemo(() => {
     let credito = 0;
     let debito = 0;
+    // "Crédito 2" e "Débito 2", somados junto na mesma varredura para os cards
+    // da visão consolidada. Ver usarColunas2.
+    let credito2 = 0;
+    let debito2 = 0;
     let dizimos = 0;
     const eventos = new Set<string>();
     const credPorMes = Array<number>(12).fill(0);
@@ -344,6 +355,8 @@ export function Section1Total({
       const noAno = m >= 1 && m <= 12;
       credito += r.credito1;
       debito += r.debito1;
+      credito2 += r.credito;
+      debito2 += r.debito;
       if (noAno) {
         credPorMes[m - 1] += r.credito1;
         debPorMes[m - 1] += r.debito1;
@@ -359,6 +372,8 @@ export function Section1Total({
     return {
       credito,
       debito,
+      credito2,
+      debito2,
       dizimos,
       eventos: eventos.size,
       credPorMes,
@@ -368,10 +383,14 @@ export function Section1Total({
     };
   }, [filtered]);
 
-  // Receita Total: soma da coluna "Crédito" da base.
-  const totalCredito = agregados.credito;
-  // Despesa vem da coluna "Débito" da base (r.debito1), não de "Débito  2".
-  const totalDebito = agregados.debito;
+  /*
+   * Receita e Despesa Total: "Crédito 2" / "Débito 2" na visão consolidada do
+   * administrador, "Crédito" / "Débito" em todo o resto. Só os dois cards — o
+   * gráfico mensal "Entradas x Despesas" e os demais continuam nas colunas de
+   * sempre.
+   */
+  const totalCredito = usarColunas2 ? agregados.credito2 : agregados.credito;
+  const totalDebito = usarColunas2 ? agregados.debito2 : agregados.debito;
   // Card "Dízimos e Ofertas": soma da coluna "Crédito" da base, restrita às
   // linhas de dízimos e ofertas — a mesma coluna que os dois donuts leem.
   const totalDizimos = agregados.dizimos;

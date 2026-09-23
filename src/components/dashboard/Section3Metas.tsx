@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   ResponsiveContainer,
@@ -26,6 +26,12 @@ interface Props {
    * nota lá.
    */
   dizimosOfertas: number;
+  /**
+   * Se o Realizado lê "Débito 2" em vez de "Débito". Decidido no Dashboard,
+   * junto com os cards de Receita e Despesa Total — os dois precisam concordar,
+   * porque as barras daqui são porcentagens da despesa total que o card mostra.
+   */
+  usarColunas2: boolean;
 }
 
 /*
@@ -42,7 +48,7 @@ interface Grupo {
    * Meta do grupo. Sem valor aqui, é a soma das metas das partes — que é o certo
    * quando a fusão não muda o alvo (Custeio já valia 12% e Outras Despesas, 0%).
    * Investimentos precisa do valor explícito: as três partes valiam 0% cada,
-   * mas o grupo responde por 9%.
+   * mas o grupo responde por 7%.
    */
   metaPropria?: number;
 }
@@ -51,7 +57,7 @@ const GRUPOS: Grupo[] = [
   {
     nome: "Investimentos em Ativos",
     partes: ["Investimentos Central", "Ativos Imobilizados", "Investimento em Terceiros"],
-    metaPropria: 9,
+    metaPropria: 7,
   },
   {
     nome: "Custeio",
@@ -140,9 +146,20 @@ const MultiLineTick = (props: any) => {
   );
 };
 
-export function Section3Metas({ financial, dizimosOfertas }: Props) {
+export function Section3Metas({ financial, dizimosOfertas, usarColunas2 }: Props) {
+  /*
+   * A coluna que o Realizado lê, num ponto só. Todas as somas deste gráfico —
+   * as barras, o total que vira denominador, e o painel de lançamentos que
+   * aparece ao passar o mouse — passam por aqui. Se uma delas lesse outra
+   * coluna, o painel de uma barra somaria um total diferente da própria barra.
+   */
+  const valorDe = useCallback(
+    (r: FinancialRow) => (usarColunas2 ? r.debito : r.debito1),
+    [usarColunas2],
+  );
+
   // Unidade e mês já vieram aplicados do cabeçalho; resta o recorte da seção.
-  const filtered = useMemo(() => financial.filter((r) => r.debito1 > 0), [financial]);
+  const filtered = useMemo(() => financial.filter((r) => valorDe(r) > 0), [financial, valorDe]);
   // Miniatura na trilha não anima: ver nota em secaoAtiva.tsx.
   const animarGraficos = useAnimarGraficos();
 
@@ -156,14 +173,14 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
     const somas = new Map<string, number>();
     const nomes = new Map<string, string>();
     for (const r of filtered) {
-      total += r.debito1;
+      total += valorDe(r);
       const k = norm(r.meta);
       if (!k) continue;
-      somas.set(k, (somas.get(k) ?? 0) + r.debito1);
+      somas.set(k, (somas.get(k) ?? 0) + valorDe(r));
       if (!nomes.has(k)) nomes.set(k, r.meta);
     }
     return { totalDebito: total, sumByMeta: somas, displayName: nomes };
-  }, [filtered]);
+  }, [filtered, valorDe]);
 
   const data = useMemo(() => {
     // Cópia: as metas fixas entram só nesta conta, sem sujar o Map memoizado.
@@ -228,7 +245,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
   const { rows: dataRows, composicaoPorGrupo } = data;
 
   /*
-   * Soma das metas que o gráfico realmente desenha — inclui os 9% do grupo de
+   * Soma das metas que o gráfico realmente desenha — inclui os 7% do grupo de
    * investimentos, que não existem em META_TARGETS (lá as três naturezas valem
    * 0% cada). Ler de dataRows mantém o rodapé em dia com as barras.
    */
@@ -480,10 +497,10 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
     for (const r of filtered) {
       const chave = norm(r.meta);
       if (!chavesDoHover.has(chave)) continue;
-      total += r.debito1;
+      total += valorDe(r);
       const acc = somaPorParte.get(chave);
-      if (acc) acc.soma += r.debito1;
-      else somaPorParte.set(chave, { nome: r.meta, soma: r.debito1 });
+      if (acc) acc.soma += valorDe(r);
+      else somaPorParte.set(chave, { nome: r.meta, soma: valorDe(r) });
       const razao = r.razaoSocial || "—";
       const nat4 = r.nat4 || "—";
       const projeto = r.projeto || "<SEM PROJETO>";
@@ -491,8 +508,8 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
       // um mesmo fornecedor pode aparecer em mais de uma.
       const k = `${razao}|||${nat4}|||${projeto}|||${chave}`;
       const cur = map.get(k);
-      if (cur) cur.soma += r.debito1;
-      else map.set(k, { razao, nat4, projeto, soma: r.debito1, parte: r.meta });
+      if (cur) cur.soma += valorDe(r);
+      else map.set(k, { razao, nat4, projeto, soma: valorDe(r), parte: r.meta });
     }
     return {
       linhas: Array.from(map.values())
@@ -505,7 +522,7 @@ export function Section3Metas({ financial, dizimosOfertas }: Props) {
         .sort((a, b) => b.soma - a.soma)
         .map((p) => [p.nome, p.soma] as [string, number]),
     };
-  }, [chavesDoHover, filtered]);
+  }, [chavesDoHover, filtered, valorDe]);
 
   const rankingRows = rankingBruto.linhas;
 

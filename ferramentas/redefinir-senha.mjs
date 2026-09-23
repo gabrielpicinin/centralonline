@@ -118,7 +118,33 @@ if (!perfil) {
   process.exit(1);
 }
 
-db.prepare("UPDATE perfis SET senha_hash = ? WHERE id = ?").run(hash, perfil.id);
+/*
+ * A senha recuperável do pastor é APAGADA junto, e não esquecida.
+ *
+ * Pastores têm, além do hash, uma cópia cifrada da senha para o administrador
+ * poder mostrá-la de novo. Esta ferramenta não consegue cifrar a senha nova —
+ * a chave deriva do SESSION_SECRET, que vive na configuração do serviço e não
+ * aqui. Se só trocasse o hash, a cópia cifrada continuaria sendo a da senha
+ * ANTIGA, e o "Mostrar senha" exibiria uma senha que não funciona mais. Apagar
+ * faz a tela dizer a verdade: não há senha para mostrar, gere outra.
+ *
+ * A coluna é conferida antes porque esta ferramenta existe para o dia ruim, e
+ * pode rodar contra um banco antigo que o sistema ainda não migrou. Quebrar
+ * justamente aí seria a pior hora.
+ */
+const temCifrada = db
+  .prepare("PRAGMA table_info(perfis)")
+  .all()
+  .some((c) => c.name === "senha_cifrada");
+
+if (temCifrada) {
+  db.prepare("UPDATE perfis SET senha_hash = ?, senha_cifrada = NULL WHERE id = ?").run(
+    hash,
+    perfil.id,
+  );
+} else {
+  db.prepare("UPDATE perfis SET senha_hash = ? WHERE id = ?").run(hash, perfil.id);
+}
 
 /* Uma conta desativada não entra, mesmo com a senha certa. Avisar poupa uma
    meia hora de gente conferindo se digitou errado. */

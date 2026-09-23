@@ -18,8 +18,9 @@ import {
   trocarSenha,
   usuarioExiste,
   buscarPorId,
+  senhaCifradaDoPastor,
 } from "./banco.server";
-import { gerarHash, gerarSenhaLegivel } from "./senha.server";
+import { gerarHash, gerarSenhaLegivel, cifrarSenha, decifrarSenha } from "./senha.server";
 import { exigirAdministrador } from "./sessao.server";
 
 /** Tudo o que a seção "Unidades por pastor" precisa, numa chamada. */
@@ -53,10 +54,14 @@ export const criarPastorServer = createServerFn({ method: "POST" })
     }
 
     /*
-     * A senha é gerada aqui e devolvida UMA vez, para o administrador copiar.
-     * Ela não é guardada em texto em lugar nenhum — o que fica no banco é o
-     * hash. Se a tela for fechada antes de copiar, o caminho é gerar outra;
-     * não existe "ver a senha de novo", porque isso exigiria guardá-la.
+     * A senha é gerada aqui e devolvida para o administrador copiar. Vai para o
+     * banco de dois jeitos: em hash, que é o que o login confere, e cifrada,
+     * para o "Mostrar senha" poder exibi-la de novo depois.
+     *
+     * Antes só existia o hash, e fechar a tela sem copiar obrigava a gerar
+     * outra. Ficou pior em HTTP, onde o botão de copiar pode falhar. A decisão
+     * de guardar recuperável, e por que ela é aceitável para pastor e não para
+     * administrador, está em senha.server.ts.
      */
     const senha = gerarSenhaLegivel();
     const perfil = criarPerfil({
@@ -64,6 +69,7 @@ export const criarPastorServer = createServerFn({ method: "POST" })
       nome: data.nome,
       papel: "pastor",
       senhaHash: await gerarHash(senha),
+      senhaCifrada: cifrarSenha(senha),
     });
     return { ok: true as const, perfil, senha };
   });
@@ -81,7 +87,39 @@ export const regerarSenhaServer = createServerFn({ method: "POST" })
     if (!perfil || perfil.papel !== "pastor") return { ok: false as const };
 
     const senha = gerarSenhaLegivel();
-    trocarSenha(perfil.id, await gerarHash(senha));
+    // Hash e cifrada juntos, num comando só — ver trocarSenha em banco.server.ts.
+    trocarSenha(perfil.id, await gerarHash(senha), cifrarSenha(senha));
+    return { ok: true as const, senha };
+  });
+
+/**
+ * Mostra de novo a senha de um pastor.
+ *
+ * Três respostas possíveis, e a tela precisa distinguir as três:
+ *   - a senha, quando ela existe e decifra;
+ *   - "anterior", quando a conta é de antes deste recurso e só tem hash — a
+ *     senha dela nunca foi guardada recuperável e não há como obtê-la;
+ *   - "ilegivel", quando existia mas não decifra mais, o que quase sempre
+ *     significa SESSION_SECRET trocado.
+ * Nos dois casos sem senha, a saída é a mesma — gerar uma nova —, mas dizer
+ * POR QUE evita que o administrador ache que o sistema está quebrado.
+ */
+export const mostrarSenhaServer = createServerFn({ method: "POST" })
+  .validator((d: unknown) => z.object({ perfilId: z.number().int().positive() }).parse(d))
+  .handler(async ({ data }) => {
+    await exigirAdministrador();
+    const perfil = buscarPorId(data.perfilId);
+    // Só pastor. A consulta em senhaCifradaDoPastor já filtra por papel; esta
+    // linha é a segunda camada, e a que devolve uma resposta legível.
+    if (!perfil || perfil.papel !== "pastor")
+      return { ok: false as const, motivo: "invalido" as const };
+
+    const guardada = senhaCifradaDoPastor(perfil.id);
+    if (!guardada) return { ok: false as const, motivo: "anterior" as const };
+
+    const senha = decifrarSenha(guardada);
+    if (!senha) return { ok: false as const, motivo: "ilegivel" as const };
+
     return { ok: true as const, senha };
   });
 

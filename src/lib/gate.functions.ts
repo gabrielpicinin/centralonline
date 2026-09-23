@@ -9,7 +9,13 @@
 import { createServerFn } from "@tanstack/react-start";
 import { useSession, getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
-import { contarPerfis, criarPerfil, buscarPorUsuario, buscarPorId } from "./banco.server";
+import {
+  contarPerfis,
+  criarPerfil,
+  buscarPorUsuario,
+  buscarPorId,
+  registrarAcesso,
+} from "./banco.server";
 import { gerarHash, conferirSenha, queimarTempoDeSenha } from "./senha.server";
 import { origemDaRequisicao } from "./origem";
 import { getSessionConfig, type DadosSessao } from "./sessao.server";
@@ -110,6 +116,8 @@ export const criarAdministradorServer = createServerFn({ method: "POST" })
       papel: "admin",
       senhaHash: await gerarHash(data.senha),
     });
+    // Criar o acesso já é entrar: a tela seguinte é a do administrador.
+    registrarAcesso(perfil.id);
 
     const session = await useSession<DadosSessao>(getSessionConfig());
     await session.update({
@@ -158,6 +166,13 @@ export const loginServer = createServerFn({ method: "POST" })
     }
 
     tentativas.delete(origem);
+    /*
+     * Registrado só depois de tudo conferido, e antes da sessão: tentativa
+     * errada não conta como acesso. Neste sistema, login bem-sucedido é o
+     * mesmo que "entrou no dashboard", porque toda carga de página começa
+     * pela tela de login — ver appState.tsx.
+     */
+    registrarAcesso(perfil.id);
     const session = await useSession<DadosSessao>(getSessionConfig());
     await session.update({
       unlocked: true,

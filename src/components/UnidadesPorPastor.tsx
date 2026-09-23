@@ -16,16 +16,20 @@ import {
   RotateCcw,
   Loader2,
   AlertTriangle,
+  Eye,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MultiSelect } from "@/components/dashboard/MultiSelect";
 import { copiarTexto } from "@/lib/copiar";
 import {
   listarPastoresServer,
   criarPastorServer,
   regerarSenhaServer,
+  mostrarSenhaServer,
   salvarPermissoesServer,
   definirAtivoServer,
 } from "@/lib/pastores.functions";
@@ -36,6 +40,28 @@ interface Pastor {
   nome: string;
   ativo: boolean;
   unidades: string[];
+  ultimoAcesso: string | null;
+  temSenhaVisivel: boolean;
+}
+
+/*
+ * "há 3 dias" em vez de uma data crua. A pergunta que o administrador faz ao
+ * olhar esta coluna é "esse pastor está usando?", e distância responde isso
+ * mais rápido que calendário. A data exata fica no título, ao passar o mouse.
+ *
+ * Passados 30 dias volta a ser data: "há 47 dias" obriga a fazer conta, e a
+ * essa altura o que importa já é quando foi.
+ */
+function quandoFoi(iso: string): string {
+  const minutos = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  const rtf = new Intl.RelativeTimeFormat("pt-BR", { numeric: "auto" });
+  if (minutos < 1) return "agora há pouco";
+  if (minutos < 60) return rtf.format(-minutos, "minute");
+  const horas = Math.round(minutos / 60);
+  if (horas < 24) return rtf.format(-horas, "hour");
+  const dias = Math.round(horas / 24);
+  if (dias < 30) return rtf.format(-dias, "day");
+  return new Date(iso).toLocaleDateString("pt-BR");
 }
 
 /** Mesma lista, mesma ordem? Só isso decide se a linha tem alteração pendente. */
@@ -61,7 +87,10 @@ export function UnidadesPorPastor() {
    */
   const [rascunho, setRascunho] = useState<Record<number, string[]>>({});
 
-  /* A senha aparece uma vez, logo depois de gerada. Não é guardada em texto. */
+  /*
+   * A senha em exibição no cartão — recém gerada, ou pedida de novo pelo
+   * "Mostrar senha". Some quando o administrador fecha o cartão.
+   */
   const [senhaMostrada, setSenhaMostrada] = useState<{ nome: string; senha: string } | null>(null);
   /*
    * Três estados, e não um booleano: "não tentei" não é a mesma coisa que
@@ -77,6 +106,7 @@ export function UnidadesPorPastor() {
   const listar = useServerFn(listarPastoresServer);
   const criar = useServerFn(criarPastorServer);
   const regerar = useServerFn(regerarSenhaServer);
+  const mostrar = useServerFn(mostrarSenhaServer);
   const salvar = useServerFn(salvarPermissoesServer);
   const definirAtivo = useServerFn(definirAtivoServer);
 
@@ -168,9 +198,47 @@ export function UnidadesPorPastor() {
       if (r.ok) {
         setSenhaMostrada({ nome: p.nome, senha: r.senha });
         setCopiada("nao");
+        /*
+         * A partir de agora a senha dele pode ser mostrada — inclusive nas
+         * contas antigas, que só tinham hash. Atualizado só nesta linha, e
+         * não recarregando a lista inteira: recarregar descartaria as
+         * marcações de unidade que o administrador ainda não salvou.
+         */
+        setPastores((ps) => ps.map((x) => (x.id === p.id ? { ...x, temSenhaVisivel: true } : x)));
       }
     } catch {
       setErro("Não consegui gerar a senha.");
+    }
+  };
+
+  /*
+   * Mostra de novo a senha atual. Reaproveita o mesmo cartão da senha recém
+   * gerada, com o mesmo botão de copiar — que continua não afirmando cópia
+   * que não aconteceu.
+   *
+   * As duas falhas dizem o PORQUÊ, e não um genérico "não foi possível": sem
+   * isso o administrador concluiria que o sistema está com defeito.
+   */
+  const mostrarSenha = async (p: Pastor) => {
+    setErro("");
+    try {
+      const r = await mostrar({ data: { perfilId: p.id } });
+      if (r.ok) {
+        setSenhaMostrada({ nome: p.nome, senha: r.senha });
+        setCopiada("nao");
+      } else if (r.motivo === "anterior") {
+        setErro(
+          `A senha de ${p.nome} é de antes deste recurso e não pode ser mostrada. Gere uma nova — a partir dela, será possível mostrar sempre.`,
+        );
+      } else if (r.motivo === "ilegivel") {
+        setErro(
+          `A senha guardada de ${p.nome} não pode mais ser lida, porque a chave do servidor mudou. Gere uma nova.`,
+        );
+      } else {
+        setErro("Não consegui mostrar a senha.");
+      }
+    } catch {
+      setErro("Não consegui mostrar a senha.");
     }
   };
 
@@ -233,8 +301,8 @@ export function UnidadesPorPastor() {
         <div className="mb-5 rounded-xl border border-pos/40 bg-pos/[.08] p-4">
           <p className="text-sm font-semibold text-ink">Senha de {senhaMostrada.nome}</p>
           <p className="mt-1 text-sm text-ink-2">
-            Copie e passe para ele. Ela não aparece de novo — se perder, gere outra pela chave na
-            linha dele.
+            Copie e passe para ele. Se precisar dela de novo, use “Mostrar senha” na chave da linha
+            dele.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <code className="rounded-lg border border-line-strong bg-panel-2 px-3 py-2 font-mono text-base text-ink">
@@ -358,6 +426,24 @@ export function UnidadesPorPastor() {
                     )}
                   </p>
                   <p className="truncate font-mono text-xs text-ink-3">{p.usuario}</p>
+                  {/*
+                    "Nunca entrou" em amarelo e não em cinza: é a linha que
+                    merece atenção. Quase sempre quer dizer senha entregue e não
+                    usada — ou não entregue.
+                  */}
+                  <p
+                    className={`mt-0.5 flex items-center gap-1 text-xs ${
+                      p.ultimoAcesso ? "text-ink-3" : "text-[#E9B949]"
+                    }`}
+                    title={
+                      p.ultimoAcesso
+                        ? new Date(p.ultimoAcesso).toLocaleString("pt-BR")
+                        : "Ainda não entrou nenhuma vez"
+                    }
+                  >
+                    <Clock className="h-3 w-3 shrink-0" />
+                    {p.ultimoAcesso ? `Último acesso ${quandoFoi(p.ultimoAcesso)}` : "Nunca entrou"}
+                  </p>
                   {semBase.length > 0 && (
                     <p className="mt-0.5 truncate text-xs text-[#E9B949]">
                       fora da base atual: {semBase.join(", ")}
@@ -378,14 +464,61 @@ export function UnidadesPorPastor() {
                 />
 
                 <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    title="Gerar senha nova"
-                    onClick={() => void novaSenha(p)}
-                    className="grid h-9 w-9 place-content-center rounded-lg text-ink-3 transition hover:bg-panel-2 hover:text-ink"
-                  >
-                    <KeyRound className="h-4 w-4" />
-                  </button>
+                  {/*
+                    A chave virou menu, com as duas coisas que se faz com a
+                    senha de alguém: ver a atual, ou trocar por outra. Ficam
+                    lado a lado porque a segunda é a saída da primeira quando
+                    não há o que mostrar.
+                  */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        title="Senha"
+                        className="grid h-9 w-9 place-content-center rounded-lg text-ink-3 transition hover:bg-panel-2 hover:text-ink"
+                      >
+                        <KeyRound className="h-4 w-4" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="end"
+                      className="w-64 border-line-strong bg-panel-2 p-1.5 text-ink"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => void mostrarSenha(p)}
+                        className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-panel"
+                      >
+                        <Eye className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
+                        <span>
+                          Mostrar senha
+                          {/*
+                            Contas de antes deste recurso só têm hash. Dizer isso
+                            aqui, antes do clique, poupa o administrador de achar
+                            que o botão está quebrado.
+                          */}
+                          {!p.temSenhaVisivel && (
+                            <span className="mt-0.5 block text-xs text-ink-3">
+                              Indisponível para esta conta — gere uma nova para poder ver depois
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void novaSenha(p)}
+                        className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-panel"
+                      >
+                        <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
+                        <span>
+                          Gerar nova senha
+                          <span className="mt-0.5 block text-xs text-ink-3">
+                            A atual deixa de valer na hora
+                          </span>
+                        </span>
+                      </button>
+                    </PopoverContent>
+                  </Popover>
                   <button
                     type="button"
                     title={p.ativo ? "Desativar acesso" : "Reativar acesso"}

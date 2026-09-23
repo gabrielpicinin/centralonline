@@ -168,8 +168,17 @@ Gerar o `SESSION_SECRET`:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Trocá-lo derruba todas as sessões abertas — e só isso. As contas e as senhas
-estão no banco e não dependem dele.
+Trocá-lo tem dois efeitos, e o segundo não é óbvio:
+
+- **Derruba todas as sessões abertas.** Todo mundo entra de novo.
+- **As senhas de pastor deixam de poder ser mostradas.** A cópia recuperável de
+  cada uma é cifrada com uma chave derivada deste segredo; trocado o segredo,
+  ela não decifra mais. Nada quebra — o "Mostrar senha" passa a dizer que a
+  senha não pode ser lida e oferece gerar outra —, mas quem precisar da senha
+  de um pastor depois disso vai ter que gerar uma nova.
+
+As contas em si e o login continuam funcionando: o que o login confere é o
+hash, que não depende deste segredo.
 
 ### Está no ar?
 

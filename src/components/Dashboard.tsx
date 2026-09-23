@@ -97,6 +97,34 @@ export function Dashboard() {
   const semTudo = (sel: string[], total: number) => (total > 0 && sel.length >= total ? [] : sel);
 
   const uniSel = useMemo(() => semTudo(unidadesSel, unidades.length), [unidadesSel, unidades]);
+
+  /*
+   * Quando ler "Crédito 2" / "Débito 2" em vez de "Crédito" / "Débito".
+   *
+   * Só na visão CONSOLIDADA DO ADMINISTRADOR: o Financeiro olhando a rede
+   * inteira — "Total Geral", ou todas as unidades marcadas, que o semTudo
+   * acima já reduz ao mesmo estado. Recortou algumas unidades, volta para as
+   * colunas de sempre.
+   *
+   * Pastor nunca, nem vendo todas as unidades dele. Decisão da Central: para
+   * os pastores o dashboard fica exatamente como estava.
+   *
+   * POR QUE NÃO USAR "DÉBITO 2" SEMPRE — e não mude isso sem ler: as colunas
+   * "2" eliminam as transferências entre unidades. Medido na base de 2026: na
+   * rede inteira, receita e despesa caem exatamente o mesmo valor
+   * (R$ 10.060.070,71), que é a assinatura de dinheiro saindo de uma unidade e
+   * entrando em outra. Para a rede, eliminar isso está certo: é dinheiro
+   * circulando dentro da própria Central. Para UMA unidade, está errado — o
+   * dinheiro saiu dela de verdade. Com "Débito 2", a Central Contagem aparece
+   * com 0,0% para Central Missionária e 0,0% para Assistência Social, quando na
+   * realidade mandou 13,3% e 8,3% das despesas para esses fundos. A unidade
+   * pareceria não ter contribuído com nada.
+   *
+   * Calculado aqui, uma vez, e passado às seções, para que os cards e o
+   * gráfico de metas nunca discordem sobre qual coluna está valendo — as barras
+   * do gráfico são porcentagens da mesma despesa total que o card mostra.
+   */
+  const usarColunas2 = papel === "admin" && uniSel.length === 0;
   const mesSel = useMemo(() => semTudo(mesesSel.map(String), 12).map(Number), [mesesSel]);
 
   /*
@@ -265,6 +293,7 @@ export function Dashboard() {
         conteudo: (
           <Section1Total
             rotuloTodasUnidades={rotuloTodasUnidades}
+            usarColunas2={usarColunas2}
             financial={dados}
             membership={membership}
             metaAnualPorUnidade={metaAnualPorUnidade}
@@ -310,7 +339,11 @@ export function Dashboard() {
           // O card de metas é o próprio conteúdo da seção; a moldura com padding
           // fica aqui para ele não encostar nas bordas do quadro de design.
           <div className="flex h-full w-full min-h-0 flex-col p-6">
-            <Section3Metas financial={dados} dizimosOfertas={dizimosOfertas} />
+            <Section3Metas
+              financial={dados}
+              dizimosOfertas={dizimosOfertas}
+              usarColunas2={usarColunas2}
+            />
           </div>
         ),
       },
