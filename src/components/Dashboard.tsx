@@ -99,12 +99,18 @@ export function Dashboard() {
   const uniSel = useMemo(() => semTudo(unidadesSel, unidades.length), [unidadesSel, unidades]);
 
   /*
-   * Quando ler "Crédito 2" / "Débito 2" em vez de "Crédito" / "Débito".
+   * A visão CONSOLIDADA DO ADMINISTRADOR: o Financeiro olhando a rede inteira.
    *
-   * Só na visão CONSOLIDADA DO ADMINISTRADOR: o Financeiro olhando a rede
-   * inteira — "Total Geral", ou todas as unidades marcadas, que o semTudo
-   * acima já reduz ao mesmo estado. Recortou algumas unidades, volta para as
-   * colunas de sempre.
+   * Nela, e só nela, duas coisas mudam nos cards de Receita e Despesa Total:
+   *   - leem "Crédito 2" / "Débito 2" em vez de "Crédito" / "Débito";
+   *   - deixam de fora as unidades listadas em src/lib/consolidado.ts.
+   * O gráfico de metas recebe o mesmo sinal, mas só para a primeira: a troca
+   * de coluna. Ele continua somando todas as unidades.
+   *
+   * "Rede inteira" é "Total Geral", ou todas as unidades marcadas, que o
+   * semTudo acima já reduz ao mesmo estado. Recortou algumas unidades, tudo
+   * volta ao normal: colunas de sempre, e todas as unidades do recorte —
+   * inclusive as de consolidado.ts, se forem elas as marcadas.
    *
    * Pastor nunca, nem vendo todas as unidades dele. Decisão da Central: para
    * os pastores o dashboard fica exatamente como estava.
@@ -121,10 +127,15 @@ export function Dashboard() {
    * pareceria não ter contribuído com nada.
    *
    * Calculado aqui, uma vez, e passado às seções, para que os cards e o
-   * gráfico de metas nunca discordem sobre qual coluna está valendo — as barras
-   * do gráfico são porcentagens da mesma despesa total que o card mostra.
+   * gráfico de metas nunca discordem sobre QUAL COLUNA está valendo.
+   *
+   * ATENÇÃO — sobre o conjunto de unidades eles discordam, de propósito: a
+   * Central pediu para tirar as unidades de consolidado.ts só dos dois cards.
+   * Então, na visão consolidada, as barras do gráfico são porcentagens de uma
+   * despesa total que INCLUI essas unidades, enquanto o card de Despesa Total
+   * as exclui. Os dois números não se correspondem nessa visão.
    */
-  const usarColunas2 = papel === "admin" && uniSel.length === 0;
+  const visaoConsolidada = papel === "admin" && uniSel.length === 0;
   const mesSel = useMemo(() => semTudo(mesesSel.map(String), 12).map(Number), [mesesSel]);
 
   /*
@@ -293,7 +304,7 @@ export function Dashboard() {
         conteudo: (
           <Section1Total
             rotuloTodasUnidades={rotuloTodasUnidades}
-            usarColunas2={usarColunas2}
+            visaoConsolidada={visaoConsolidada}
             financial={dados}
             membership={membership}
             metaAnualPorUnidade={metaAnualPorUnidade}
@@ -342,7 +353,7 @@ export function Dashboard() {
             <Section3Metas
               financial={dados}
               dizimosOfertas={dizimosOfertas}
-              usarColunas2={usarColunas2}
+              visaoConsolidada={visaoConsolidada}
             />
           </div>
         ),

@@ -30,6 +30,7 @@ import {
   Scale,
 } from "lucide-react";
 import { BRLcompact, fmtBRL, fmtPct, MESES } from "@/lib/format";
+import { ficaForaDoConsolidado } from "@/lib/consolidado";
 import {
   classifyNat3,
   isDizimosOfertas,
@@ -49,11 +50,12 @@ interface Props {
    */
   rotuloTodasUnidades: string;
   /**
-   * Se os cards de Receita e Despesa Total leem "Crédito 2" / "Débito 2" em
-   * vez de "Crédito" / "Débito". Decidido no Dashboard — ver a nota lá sobre
-   * quando isso vale e por quê.
+   * Se é o Financeiro olhando a rede inteira. Nessa visão os cards de Receita e
+   * Despesa Total leem "Crédito 2" / "Débito 2" e deixam de fora as unidades de
+   * src/lib/consolidado.ts. Decidido no Dashboard — ver a nota lá sobre quando
+   * isso vale e por quê.
    */
-  usarColunas2: boolean;
+  visaoConsolidada: boolean;
   /** Base já recortada pelos filtros universais do cabeçalho. */
   financial: FinancialRow[];
   membership: MembershipRow[];
@@ -285,7 +287,7 @@ function Flutuante({
 
 export function Section1Total({
   rotuloTodasUnidades,
-  usarColunas2,
+  visaoConsolidada,
   financial,
   membership,
   metaAnualPorUnidade,
@@ -333,10 +335,13 @@ export function Section1Total({
   const agregados = useMemo(() => {
     let credito = 0;
     let debito = 0;
-    // "Crédito 2" e "Débito 2", somados junto na mesma varredura para os cards
-    // da visão consolidada. Ver usarColunas2.
-    let credito2 = 0;
-    let debito2 = 0;
+    /*
+     * O que os cards de Receita e Despesa Total mostram na visão consolidada:
+     * "Crédito 2" / "Débito 2", sem as unidades de src/lib/consolidado.ts.
+     * Somados na mesma varredura, para não percorrer a base de novo.
+     */
+    let receitaConsolidada = 0;
+    let despesaConsolidada = 0;
     let dizimos = 0;
     const eventos = new Set<string>();
     const credPorMes = Array<number>(12).fill(0);
@@ -355,8 +360,10 @@ export function Section1Total({
       const noAno = m >= 1 && m <= 12;
       credito += r.credito1;
       debito += r.debito1;
-      credito2 += r.credito;
-      debito2 += r.debito;
+      if (!ficaForaDoConsolidado(r.unidade)) {
+        receitaConsolidada += r.credito;
+        despesaConsolidada += r.debito;
+      }
       if (noAno) {
         credPorMes[m - 1] += r.credito1;
         debPorMes[m - 1] += r.debito1;
@@ -372,8 +379,8 @@ export function Section1Total({
     return {
       credito,
       debito,
-      credito2,
-      debito2,
+      receitaConsolidada,
+      despesaConsolidada,
       dizimos,
       eventos: eventos.size,
       credPorMes,
@@ -384,13 +391,16 @@ export function Section1Total({
   }, [filtered]);
 
   /*
-   * Receita e Despesa Total: "Crédito 2" / "Débito 2" na visão consolidada do
-   * administrador, "Crédito" / "Débito" em todo o resto. Só os dois cards — o
-   * gráfico mensal "Entradas x Despesas" e os demais continuam nas colunas de
-   * sempre.
+   * Receita e Despesa Total. Na visão consolidada do administrador: colunas
+   * "Crédito 2" / "Débito 2", e sem as unidades de src/lib/consolidado.ts. Em
+   * todo o resto: "Crédito" / "Débito", com todas as unidades do recorte.
+   *
+   * Só os dois cards. O gráfico mensal "Entradas x Despesas", o card de
+   * Dízimos e os demais continuam como sempre foram — nas colunas de sempre e
+   * com todas as unidades.
    */
-  const totalCredito = usarColunas2 ? agregados.credito2 : agregados.credito;
-  const totalDebito = usarColunas2 ? agregados.debito2 : agregados.debito;
+  const totalCredito = visaoConsolidada ? agregados.receitaConsolidada : agregados.credito;
+  const totalDebito = visaoConsolidada ? agregados.despesaConsolidada : agregados.debito;
   // Card "Dízimos e Ofertas": soma da coluna "Crédito" da base, restrita às
   // linhas de dízimos e ofertas — a mesma coluna que os dois donuts leem.
   const totalDizimos = agregados.dizimos;

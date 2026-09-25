@@ -27,11 +27,13 @@ interface Props {
    */
   dizimosOfertas: number;
   /**
-   * Se o Realizado lê "Débito 2" em vez de "Débito". Decidido no Dashboard,
-   * junto com os cards de Receita e Despesa Total — os dois precisam concordar,
-   * porque as barras daqui são porcentagens da despesa total que o card mostra.
+   * Se é o Financeiro olhando a rede inteira. Aqui isso decide SÓ a coluna: o
+   * Realizado lê "Débito 2" em vez de "Débito", igual aos cards de Receita e
+   * Despesa Total. As unidades que os cards deixam de fora nessa visão (ver
+   * src/lib/consolidado.ts) continuam somadas neste gráfico — ver a nota no
+   * Dashboard.
    */
-  usarColunas2: boolean;
+  visaoConsolidada: boolean;
 }
 
 /*
@@ -146,7 +148,7 @@ const MultiLineTick = (props: any) => {
   );
 };
 
-export function Section3Metas({ financial, dizimosOfertas, usarColunas2 }: Props) {
+export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: Props) {
   /*
    * A coluna que o Realizado lê, num ponto só. Todas as somas deste gráfico —
    * as barras, o total que vira denominador, e o painel de lançamentos que
@@ -154,8 +156,8 @@ export function Section3Metas({ financial, dizimosOfertas, usarColunas2 }: Props
    * coluna, o painel de uma barra somaria um total diferente da própria barra.
    */
   const valorDe = useCallback(
-    (r: FinancialRow) => (usarColunas2 ? r.debito : r.debito1),
-    [usarColunas2],
+    (r: FinancialRow) => (visaoConsolidada ? r.debito : r.debito1),
+    [visaoConsolidada],
   );
 
   // Unidade e mês já vieram aplicados do cabeçalho; resta o recorte da seção.
