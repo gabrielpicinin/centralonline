@@ -51,9 +51,9 @@ interface Props {
   rotuloTodasUnidades: string;
   /**
    * Se é o Financeiro olhando a rede inteira. Nessa visão os cards de Receita e
-   * Despesa Total leem "Crédito 2" / "Débito 2" e deixam de fora as unidades de
-   * src/lib/consolidado.ts. Decidido no Dashboard — ver a nota lá sobre quando
-   * isso vale e por quê.
+   * Despesa Total deixam de fora as unidades de src/lib/consolidado.ts —
+   * continuam somando "Crédito" e "Débito", só que sem elas. Decidido no
+   * Dashboard — ver a nota lá sobre quando isso vale e por quê.
    */
   visaoConsolidada: boolean;
   /** Base já recortada pelos filtros universais do cabeçalho. */
@@ -337,8 +337,13 @@ export function Section1Total({
     let debito = 0;
     /*
      * O que os cards de Receita e Despesa Total mostram na visão consolidada:
-     * "Crédito 2" / "Débito 2", sem as unidades de src/lib/consolidado.ts.
-     * Somados na mesma varredura, para não percorrer a base de novo.
+     * "Crédito" / "Débito", as mesmas colunas de sempre, mas sem as unidades de
+     * src/lib/consolidado.ts. Somados na mesma varredura, para não percorrer a
+     * base de novo.
+     *
+     * Já foram "Crédito 2" / "Débito 2" nesta visão, e a Central pediu para
+     * voltar às colunas simples: a exclusão das duas unidades é o que ela quer
+     * tirar da conta, não os repasses entre unidades.
      */
     let receitaConsolidada = 0;
     let despesaConsolidada = 0;
@@ -361,8 +366,8 @@ export function Section1Total({
       credito += r.credito1;
       debito += r.debito1;
       if (!ficaForaDoConsolidado(r.unidade)) {
-        receitaConsolidada += r.credito;
-        despesaConsolidada += r.debito;
+        receitaConsolidada += r.credito1;
+        despesaConsolidada += r.debito1;
       }
       if (noAno) {
         credPorMes[m - 1] += r.credito1;
@@ -391,9 +396,9 @@ export function Section1Total({
   }, [filtered]);
 
   /*
-   * Receita e Despesa Total. Na visão consolidada do administrador: colunas
-   * "Crédito 2" / "Débito 2", e sem as unidades de src/lib/consolidado.ts. Em
-   * todo o resto: "Crédito" / "Débito", com todas as unidades do recorte.
+   * Receita e Despesa Total: sempre "Crédito" / "Débito". Na visão consolidada
+   * do administrador, sem as unidades de src/lib/consolidado.ts; em todo o
+   * resto, com todas as unidades do recorte.
    *
    * Só os dois cards. O gráfico mensal "Entradas x Despesas", o card de
    * Dízimos e os demais continuam como sempre foram — nas colunas de sempre e

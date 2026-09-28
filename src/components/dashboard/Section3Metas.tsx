@@ -14,6 +14,7 @@ import {
 import { motion } from "framer-motion";
 import { fmtBRL } from "@/lib/format";
 import { norm, type FinancialRow } from "@/lib/parsers";
+import { metaUsaDebito2 } from "@/lib/consolidado";
 import { useAnimarGraficos } from "./secaoAtiva";
 
 interface Props {
@@ -27,10 +28,12 @@ interface Props {
    */
   dizimosOfertas: number;
   /**
-   * Se é o Financeiro olhando a rede inteira. Aqui isso decide SÓ a coluna: o
-   * Realizado lê "Débito 2" em vez de "Débito", igual aos cards de Receita e
-   * Despesa Total. As unidades que os cards deixam de fora nessa visão (ver
-   * src/lib/consolidado.ts) continuam somadas neste gráfico — ver a nota no
+   * Se é o Financeiro olhando a rede inteira. Nessa visão, as metas de
+   * METAS_EM_DEBITO_2 (src/lib/consolidado.ts) leem "Débito 2" e todas as
+   * outras leem "Débito". Fora dela, tudo lê "Débito".
+   *
+   * As unidades que os cards deixam de fora continuam somadas neste gráfico —
+   * a regra dele é própria, e é por meta, não por unidade. Ver a nota no
    * Dashboard.
    */
   visaoConsolidada: boolean;
@@ -150,13 +153,17 @@ const MultiLineTick = (props: any) => {
 
 export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: Props) {
   /*
-   * A coluna que o Realizado lê, num ponto só. Todas as somas deste gráfico —
-   * as barras, o total que vira denominador, e o painel de lançamentos que
-   * aparece ao passar o mouse — passam por aqui. Se uma delas lesse outra
-   * coluna, o painel de uma barra somaria um total diferente da própria barra.
+   * A coluna que o Realizado lê, num ponto só — e ela depende da META de cada
+   * lançamento: na visão consolidada, as metas de METAS_EM_DEBITO_2 leem
+   * "Débito 2" e as outras leem "Débito"; fora dela, tudo lê "Débito".
+   *
+   * Todas as somas deste gráfico passam por aqui: as barras, o total que vira
+   * denominador, e o painel de lançamentos que aparece ao passar o mouse. Se
+   * uma delas lesse outra coluna, o painel de uma barra somaria um total
+   * diferente da própria barra.
    */
   const valorDe = useCallback(
-    (r: FinancialRow) => (visaoConsolidada ? r.debito : r.debito1),
+    (r: FinancialRow) => (visaoConsolidada && metaUsaDebito2(r.meta) ? r.debito : r.debito1),
     [visaoConsolidada],
   );
 

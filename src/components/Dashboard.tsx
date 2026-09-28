@@ -101,39 +101,39 @@ export function Dashboard() {
   /*
    * A visão CONSOLIDADA DO ADMINISTRADOR: o Financeiro olhando a rede inteira.
    *
-   * Nela, e só nela, duas coisas mudam nos cards de Receita e Despesa Total:
-   *   - leem "Crédito 2" / "Débito 2" em vez de "Crédito" / "Débito";
-   *   - deixam de fora as unidades listadas em src/lib/consolidado.ts.
-   * O gráfico de metas recebe o mesmo sinal, mas só para a primeira: a troca
-   * de coluna. Ele continua somando todas as unidades.
+   * Nela, e só nela, valem as duas regras de src/lib/consolidado.ts — cada uma
+   * numa seção, cada uma olhando uma coluna diferente:
+   *
+   *   CARDS de Receita e Despesa Total — somam "Crédito" / "Débito", sem as
+   *   UNIDADES Central Missionária e Central Social.
+   *
+   *   GRÁFICO de metas (Seção 4) — as METAS Central Missionária e Assistência
+   *   Social leem "Débito 2"; todas as outras, "Débito". Todas as unidades
+   *   entram.
    *
    * "Rede inteira" é "Total Geral", ou todas as unidades marcadas, que o
    * semTudo acima já reduz ao mesmo estado. Recortou algumas unidades, tudo
-   * volta ao normal: colunas de sempre, e todas as unidades do recorte —
-   * inclusive as de consolidado.ts, se forem elas as marcadas.
+   * volta à soma simples: "Crédito" e "Débito", com todas as unidades do
+   * recorte — inclusive as de consolidado.ts, se forem elas as marcadas.
    *
    * Pastor nunca, nem vendo todas as unidades dele. Decisão da Central: para
    * os pastores o dashboard fica exatamente como estava.
    *
-   * POR QUE NÃO USAR "DÉBITO 2" SEMPRE — e não mude isso sem ler: as colunas
-   * "2" eliminam as transferências entre unidades. Medido na base de 2026: na
-   * rede inteira, receita e despesa caem exatamente o mesmo valor
-   * (R$ 10.060.070,71), que é a assinatura de dinheiro saindo de uma unidade e
-   * entrando em outra. Para a rede, eliminar isso está certo: é dinheiro
-   * circulando dentro da própria Central. Para UMA unidade, está errado — o
-   * dinheiro saiu dela de verdade. Com "Débito 2", a Central Contagem aparece
-   * com 0,0% para Central Missionária e 0,0% para Assistência Social, quando na
-   * realidade mandou 13,3% e 8,3% das despesas para esses fundos. A unidade
-   * pareceria não ter contribuído com nada.
+   * POR QUE O "DÉBITO 2" DO GRÁFICO SÓ VALE AQUI — e não mude isso sem ler: a
+   * coluna "Débito 2" elimina os repasses que as unidades fazem aos fundos
+   * centrais. Para a rede, isso está certo: é dinheiro circulando dentro da
+   * própria Central. Para UMA unidade, está errado — o dinheiro saiu dela de
+   * verdade. Com "Débito 2", a Central Contagem aparece com 0,0% para Central
+   * Missionária e 0,0% para Assistência Social, quando na realidade mandou
+   * 13,3% e 8,3% das despesas para esses fundos. A unidade pareceria não ter
+   * contribuído com nada.
    *
-   * Calculado aqui, uma vez, e passado às seções, para que os cards e o
-   * gráfico de metas nunca discordem sobre QUAL COLUNA está valendo.
-   *
-   * ATENÇÃO — sobre o conjunto de unidades eles discordam, de propósito: a
-   * Central pediu para tirar as unidades de consolidado.ts só dos dois cards.
-   * Então, na visão consolidada, as barras do gráfico são porcentagens de uma
-   * despesa total que INCLUI essas unidades, enquanto o card de Despesa Total
-   * as exclui. Os dois números não se correspondem nessa visão.
+   * ATENÇÃO — os cards e o gráfico NÃO se correspondem nesta visão, de
+   * propósito: cada um tem a regra que a Central pediu para ele. Medido em
+   * 2026, o card de Despesa Total mostra R$ 48,83 mi (Débito, sem as duas
+   * unidades), e as barras do gráfico são porcentagens de R$ 47,47 mi (todas as
+   * unidades, com as duas metas em Débito 2). São perguntas diferentes, e os
+   * números não devem ser comparados entre si.
    */
   const visaoConsolidada = papel === "admin" && uniSel.length === 0;
   const mesSel = useMemo(() => semTudo(mesesSel.map(String), 12).map(Number), [mesesSel]);

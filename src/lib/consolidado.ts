@@ -1,20 +1,30 @@
 /*
- * Quais unidades ficam de fora dos cards de Receita e Despesa Total na visão
- * consolidada — o Financeiro olhando a rede inteira.
+ * As duas regras da visão consolidada — o Financeiro olhando a rede inteira.
  *
- * Decisão da Central. Vale SÓ para esses dois cards e SÓ nessa visão: com
- * qualquer unidade marcada no filtro, ou para qualquer pastor, os valores
- * voltam a incluir tudo o que o recorte contém — inclusive estas duas, se forem
- * elas as escolhidas. Ver `visaoConsolidada` no Dashboard.
+ * Decisões da Central. Valem SÓ nessa visão: com qualquer unidade marcada no
+ * filtro, ou para qualquer pastor, tudo volta a ser a soma simples de
+ * "Crédito" e "Débito", com todas as unidades do recorte. Ver `visaoConsolidada`
+ * no Dashboard.
  *
- * Medido na base de 2026, sobre as colunas "Crédito 2" / "Débito 2" que esses
- * cards usam na visão consolidada: as duas somam R$ 3,07 milhões de receita e
- * R$ 8,71 milhões de despesa. Tirá-las leva a Receita Total de R$ 57,75 mi para
- * R$ 54,67 mi e a Despesa Total de R$ 47,47 mi para R$ 38,77 mi.
+ * ---------------------------------------------------------------------------
+ * ATENÇÃO: SÃO DUAS LISTAS, E ELAS OLHAM COLUNAS DIFERENTES
+ * ---------------------------------------------------------------------------
+ *
+ * Os nomes se cruzam, e já houve confusão por causa disso:
+ *
+ *   UNIDADES_FORA_DOS_CARDS olha a coluna "Descrição CR. 1º Nível" — a UNIDADE.
+ *   METAS_EM_DEBITO_2       olha a coluna "Meta".
+ *
+ * "Central Missionária" aparece nas duas, porque existe como unidade e como
+ * meta. "Central Social" existe só como UNIDADE; a META que corresponde a ela
+ * se chama "Assistência Social". Não existe meta "Central Social" na base —
+ * conferido nos 140.776 lançamentos de 2026 —, e por isso ela não está na
+ * segunda lista.
  *
  * Fica num arquivo próprio, e puro, para poder ser testado sem desenhar tela
  * nenhuma — ver testes/consolidado.test.ts.
  */
+
 /*
  * Com a extensão `.ts`, ao contrário do resto do projeto — e não tire.
  *
@@ -28,18 +38,56 @@
  */
 import { norm } from "./parsers.ts";
 
-/**
- * Os nomes como aparecem na coluna Unidade da base. A comparação ignora acento,
- * maiúscula e espaço nas pontas (ver `norm`): a exclusão não pode deixar de
- * funcionar em silêncio porque a planilha um dia veio com "Central Missionaria"
- * sem acento. Uma falha aqui não daria erro nenhum — só inflaria o total da
- * rede, e ninguém perceberia.
+/*
+ * As comparações ignoram acento, maiúscula e espaço nas pontas (ver `norm`):
+ * uma regra destas não pode deixar de funcionar em silêncio porque a planilha
+ * um dia veio com "Central Missionaria" sem acento. Uma falha aqui não daria
+ * erro nenhum — só mudaria milhões de reais nos números da rede, e ninguém
+ * perceberia.
  */
-const UNIDADES_FORA_DO_CONSOLIDADO = ["Central Missionária", "Central Social"];
 
-const CHAVES = new Set(UNIDADES_FORA_DO_CONSOLIDADO.map((u) => norm(u)));
+/* ============================ 1. os cards ============================ */
 
-/** Se a unidade fica de fora dos cards de Receita e Despesa Total da rede. */
+/*
+ * Unidades que ficam FORA dos cards de Receita Total e Despesa Total.
+ *
+ * Nesses cards, a visão consolidada soma "Crédito" e "Débito" — as colunas
+ * simples — de todas as unidades MENOS estas. Medido na base de 2026: a
+ * Receita Total fica em R$ 55.053.598,50 e a Despesa Total em
+ * R$ 48.828.247,08.
+ */
+const UNIDADES_FORA_DOS_CARDS = ["Central Missionária", "Central Social"];
+const CHAVES_UNIDADES = new Set(UNIDADES_FORA_DOS_CARDS.map((u) => norm(u)));
+
+/** Se a UNIDADE fica de fora dos cards de Receita e Despesa Total da rede. */
 export function ficaForaDoConsolidado(unidade: string): boolean {
-  return CHAVES.has(norm(unidade));
+  return CHAVES_UNIDADES.has(norm(unidade));
+}
+
+/* ======================= 2. o gráfico de metas ======================= */
+
+/*
+ * Metas cujo Realizado lê "Débito 2" em vez de "Débito" na Seção 4.
+ *
+ * Todas as outras metas leem "Débito". São justamente estas as duas únicas
+ * metas em que as duas colunas diferem de forma relevante: "Débito 2" tira
+ * delas os repasses que as unidades fazem aos fundos centrais, que na visão da
+ * rede é dinheiro circulando dentro da própria Central. Medido em 2026:
+ * Central Missionária vai de R$ 13,58 mi em "Débito" para R$ 7,25 mi em
+ * "Débito 2"; Assistência Social, de R$ 6,27 mi para R$ 2,55 mi. Nas demais,
+ * as colunas são iguais — por isso o gráfico resultante é o mesmo que já era
+ * desenhado com "Débito 2" em tudo, só que agora pela regra que a Central
+ * descreveu.
+ *
+ * Isto NÃO vale fora da visão consolidada, e a razão é grave: para uma unidade
+ * sozinha, "Débito 2" zera essas metas. A Central Contagem mandou 13,3% das
+ * despesas para a Central Missionária; em "Débito 2" isso vira 0,0%, como se
+ * ela não tivesse contribuído com nada.
+ */
+const METAS_EM_DEBITO_2 = ["Central Missionária", "Assistência Social"];
+const CHAVES_METAS = new Set(METAS_EM_DEBITO_2.map((m) => norm(m)));
+
+/** Se a META lê "Débito 2" no gráfico de metas da rede. */
+export function metaUsaDebito2(meta: string): boolean {
+  return CHAVES_METAS.has(norm(meta));
 }
