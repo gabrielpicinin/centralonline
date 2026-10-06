@@ -22,11 +22,20 @@ import {
 } from "./banco.server";
 import { gerarHash, gerarSenhaLegivel, cifrarSenha, decifrarSenha } from "./senha.server";
 import { exigirAdministrador } from "./sessao.server";
+import { BASES } from "./bases";
 
-/** Tudo o que a seção "Unidades por pastor" precisa, numa chamada. */
+/**
+ * Tudo o que a seção "Unidades por pastor" precisa, numa chamada: os pastores
+ * com as unidades de cada um por base, o universo de unidades de cada base, e
+ * as permissões órfãs.
+ */
 export const listarPastoresServer = createServerFn({ method: "GET" }).handler(async () => {
   await exigirAdministrador();
-  return { pastores: listarPastores(), unidades: listarUnidades(), orfas: permissoesOrfas() };
+  return {
+    pastores: listarPastores(),
+    unidadesPorBase: { brasil: listarUnidades("brasil"), angola: listarUnidades("angola") },
+    orfas: permissoesOrfas(),
+  };
 });
 
 const usuarioSchema = z
@@ -131,6 +140,12 @@ export const salvarPermissoesServer = createServerFn({ method: "POST" })
           .array(
             z.object({
               perfilId: z.number().int().positive(),
+              /*
+               * Cada alteração diz a base, e só as permissões daquela base são
+               * regravadas — ver salvarPermissoes. Sem a base aqui, salvar o
+               * Brasil de um pastor apagaria o Angola dele.
+               */
+              base: z.enum(BASES),
               unidades: z.array(z.string().max(300)).max(500),
             }),
           )

@@ -16,7 +16,7 @@ import {
 const MINIMO_SENHA = 8;
 
 export function Login() {
-  const { setStep, setUser, setPapel, carregarDoServidor } = useApp();
+  const { setStep, setUser, setPapel, carregarBasesDaSessao, abrirBase } = useApp();
   const [u, setU] = useState("");
   const [p, setP] = useState("");
   const [p2, setP2] = useState("");
@@ -69,19 +69,26 @@ export function Login() {
         setUser(res.user);
         setPapel(res.papel);
         /*
-         * O administrador passa pela tela de bases; os demais vão direto ao
-         * dashboard. O passo seguinte é decidido aqui porque é o único lugar em
-         * que o papel acabou de ser confirmado pelo servidor.
+         * O administrador passa pela tela de bases; os demais vão ao dashboard.
+         * O passo seguinte é decidido aqui porque é o único lugar em que o papel
+         * acabou de ser confirmado pelo servidor.
          */
+        const bases = await carregarBasesDaSessao();
         if (res.papel === "admin") {
           setStep("upload");
+        } else if (bases.length > 1) {
+          // As duas bases: uma tela curta para escolher, e o alternador depois.
+          setStep("escolha");
         } else {
           /*
-           * O pastor não passa por nenhuma tela que carregue a base, então ela é
-           * buscada aqui. O servidor devolve só as unidades dele — do ponto de
-           * vista do dashboard, a base simplesmente é menor.
+           * Uma base só: direto ao dashboard dela, sem escolha nem alternador —
+           * quem só tem o Brasil não precisa nem saber que existe outra. Sem
+           * base nenhuma, o dashboard explica que nada foi liberado ainda.
+           *
+           * O servidor devolve só as unidades dele, dentro da base pedida — do
+           * ponto de vista do dashboard, a base simplesmente é menor.
            */
-          await carregarDoServidor();
+          if (bases[0]) await abrirBase(bases[0]);
           setStep("dashboard");
         }
       } else {
@@ -117,6 +124,7 @@ export function Login() {
       if (res.ok) {
         setUser(res.user);
         setPapel("admin");
+        await carregarBasesDaSessao();
         setStep("upload");
       } else {
         setPrecisaConfigurar(false);

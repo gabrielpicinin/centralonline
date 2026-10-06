@@ -29,7 +29,9 @@ import {
   Minimize2,
   Scale,
 } from "lucide-react";
-import { BRLcompact, fmtBRL, fmtPct, MESES } from "@/lib/format";
+import { fmtPct, MESES } from "@/lib/format";
+import { useBaseAtiva } from "@/lib/baseAtiva";
+import { desenha, type Presenca } from "@/lib/presenca";
 import { ficaForaDoConsolidado } from "@/lib/consolidado";
 import {
   classifyNat3,
@@ -56,6 +58,12 @@ interface Props {
    * Dashboard — ver a nota lá sobre quando isso vale e por quê.
    */
   visaoConsolidada: boolean;
+  /**
+   * O que a carga tem, decidido no servidor — ver src/lib/presenca.ts. Daqui
+   * saem o card e o gráfico de meta, e os três cards de membresia. A seção não
+   * olha os dados para decidir isso.
+   */
+  presenca: Presenca;
   /** Base já recortada pelos filtros universais do cabeçalho. */
   financial: FinancialRow[];
   membership: MembershipRow[];
@@ -104,6 +112,7 @@ function CaixaTooltip({
   titulo: string;
   linhas: Array<{ cor: string; nome: string; valor: number }>;
 }) {
+  const { moeda } = useBaseAtiva();
   return (
     <div className="rounded-lg border border-white/[.16] bg-[#161A21] px-3 py-2 text-xs shadow-panel-lg">
       <p className="mb-1.5 font-semibold text-[#F6F8FB]">{titulo}</p>
@@ -112,7 +121,7 @@ function CaixaTooltip({
           <div key={i} className="flex items-center gap-2">
             <span className="inline-block h-2 w-2 rounded-full" style={{ background: l.cor }} />
             <span className="text-ink-2">{l.nome}:</span>
-            <span className="font-medium text-ink tabular-nums">{fmtBRL(l.valor)}</span>
+            <span className="font-medium text-ink tabular-nums">{moeda.formatar(l.valor)}</span>
           </div>
         ))}
       </div>
@@ -143,6 +152,7 @@ function CustomTooltip({ active, payload, label }: any) {
  * saldo acumulado.
  */
 function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
+  const { moeda, declaracao } = useBaseAtiva();
   const { abertura, atual, temAtual } = useMemo(() => {
     let soma = 0;
     let achouAtual = false;
@@ -185,7 +195,7 @@ function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
         {rotulo}
       </span>
       <p className="text-center text-[17px] font-semibold leading-tight tabular-nums text-ink">
-        {fmtBRL(valor)}
+        {moeda.formatar(valor)}
       </p>
     </div>
   );
@@ -205,8 +215,13 @@ function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
       {saldo.length === 0 ? (
         <p className="pb-1 text-center text-[12.5px] leading-snug text-ink-3">
           Base de saldo não carregada.
-          <br />
-          Envie o Arquivo 3 na tela anterior.
+          {/* Só onde há um Arquivo 3 para enviar: o bloco de Angola ainda não tem. */}
+          {declaracao.arquivos.saldo && (
+            <>
+              <br />
+              Envie o Arquivo 3 na tela anterior.
+            </>
+          )}
         </p>
       ) : (
         <div className="w-full space-y-1">
@@ -288,6 +303,7 @@ function Flutuante({
 export function Section1Total({
   rotuloTodasUnidades,
   visaoConsolidada,
+  presenca,
   financial,
   membership,
   metaAnualPorUnidade,
@@ -299,6 +315,13 @@ export function Section1Total({
 }: Props) {
   // Miniatura na trilha não anima: ver nota em secaoAtiva.tsx.
   const animarGraficos = useAnimarGraficos();
+  const { base, moeda } = useBaseAtiva();
+  /*
+   * Sem meta de dízimos na carga, o card e o gráfico de meta NÃO EXISTEM — nem
+   * zerados, nem com o lugar guardado. Os vizinhos ocupam o espaço.
+   */
+  const comCardMeta = desenha(presenca, "cardMetaDeDizimos");
+  const comGraficoMeta = desenha(presenca, "graficoDizimosVsMeta");
   const isAll = unidadesSel.length === 0;
   const mesesAtivos =
     mesesSel.length === 0 ? Array.from({ length: 12 }, (_, i) => i + 1) : mesesSel;
@@ -313,8 +336,8 @@ export function Section1Total({
    */
   const metaAnual = useMemo(() => {
     if (isAll) return metaAnualTotalGeral;
-    return unidadesSel.reduce((s, u) => s + metaAnualDaUnidade(metaAnualPorUnidade, u), 0);
-  }, [metaAnualPorUnidade, metaAnualTotalGeral, unidadesSel.join("|"), isAll]);
+    return unidadesSel.reduce((s, u) => s + metaAnualDaUnidade(metaAnualPorUnidade, u, base), 0);
+  }, [metaAnualPorUnidade, metaAnualTotalGeral, unidadesSel.join("|"), isAll, base]);
 
   const metaMensal = metaAnual / 12;
   // O card mostra a meta anual como está na base, sem escalar pelo filtro de mês.
@@ -365,7 +388,7 @@ export function Section1Total({
       const noAno = m >= 1 && m <= 12;
       credito += r.credito1;
       debito += r.debito1;
-      if (!ficaForaDoConsolidado(r.unidade)) {
+      if (!ficaForaDoConsolidado(r.unidade, base)) {
         receitaConsolidada += r.credito1;
         despesaConsolidada += r.debito1;
       }
@@ -393,7 +416,7 @@ export function Section1Total({
       dizPorMes,
       canais,
     };
-  }, [filtered]);
+  }, [filtered, base]);
 
   /*
    * Receita e Despesa Total: sempre "Crédito" / "Débito". Na visão consolidada
@@ -504,7 +527,8 @@ export function Section1Total({
   const [animar, setAnimar] = useState(false);
   const [geo, setGeo] = useState<{
     totais: Caixa;
-    meta: Caixa;
+    /** Nulo quando a carga não tem meta e o gráfico de meta não existe. */
+    meta: Caixa | null;
     area: { w: number; h: number };
   } | null>(null);
 
@@ -512,7 +536,7 @@ export function Section1Total({
     const area = areaRef.current;
     const vt = vaoTotaisRef.current;
     const vm = vaoMetaRef.current;
-    if (!area || !vt || !vm) return;
+    if (!area || !vt) return;
     /*
      * offsetTop/offsetLeft ignoram o scale que o SectionDeck aplica acima: são
      * coordenadas de layout, que é justamente o sistema em que o posicionamento
@@ -529,7 +553,7 @@ export function Section1Total({
       setAnimar(false);
       setGeo({
         totais: doVao(vt),
-        meta: doVao(vm),
+        meta: vm ? doVao(vm) : null,
         area: { w: area.clientWidth, h: area.clientHeight },
       });
     };
@@ -537,9 +561,9 @@ export function Section1Total({
     const ro = new ResizeObserver(medir);
     ro.observe(area);
     ro.observe(vt);
-    ro.observe(vm);
+    if (vm) ro.observe(vm);
     return () => ro.disconnect();
-  }, []);
+  }, [comGraficoMeta]);
 
   /*
    * Qual painel ainda está em trânsito. Sem isso, o painel que recolhe perde a
@@ -696,46 +720,104 @@ export function Section1Total({
          */
         className="relative grid min-h-0 flex-1 grid-cols-[1fr_440px] grid-rows-[auto_1fr] gap-4"
       >
-        <div className="grid grid-cols-4 grid-rows-2 gap-4">
-          <MiniKpi
-            icon={<HandCoins />}
-            label="Dízimos e Ofertas"
-            value={fmtBRL(totalDizimos)}
-            delay={0}
-          />
-          <MiniKpi icon={<Target />} label="Meta de Dízimos" value={fmtBRL(metaTotal)} delay={1} />
-          <MiniKpi icon={<Wallet />} label="Receita Total" value={fmtBRL(totalCredito)} delay={2} />
-          <MiniKpi
-            icon={<TrendingDown />}
-            label="Despesa Total"
-            value={fmtBRL(totalDebito)}
-            iconColor="#FF7A70"
-            delay={3}
-          />
-          <MiniKpi icon={<User />} label="Dízimo per Capta" value={fmtBRL(perCapta)} delay={4} />
-          <MiniKpi
-            icon={<Users />}
-            label="Membresia"
-            value={membMedia.toLocaleString("pt-BR")}
-            delay={5}
-          />
-          <MiniKpi
-            icon={<Banknote />}
-            label="Eventos de Depósitos"
-            value={eventosDepositos.toLocaleString("pt-BR")}
-            delay={6}
-          />
-          <MiniKpi
-            icon={<Percent />}
-            label="Taxa de Depositantes"
-            value={
-              taxaDep.toLocaleString("pt-BR", {
-                minimumFractionDigits: 1,
-                maximumFractionDigits: 1,
-              }) + "%"
-            }
-            delay={7}
-          />
+        {/*
+         * Os cards em duas linhas, a de baixo sempre com quatro. Sem o card de
+         * meta, a de cima fica com três, mais largos — e nenhuma vaga vazia.
+         */}
+        <div className="grid grid-cols-12 grid-rows-2 gap-4">
+          {(() => {
+            /*
+             * Sem a base de membresia, os três cards que dependem dela mostram
+             * "—" e dizem por quê. Ausência declarada, e não um zero que
+             * passaria por número real — o mesmo trato do card de saldo. É o
+             * oposto da meta, que some calada: membresia ausente é esquecimento,
+             * e o aviso ajuda a lembrar.
+             */
+            const semMembresia = !presenca.membresia;
+            const nota = semMembresia ? "Base de membresia não carregada" : undefined;
+            const cards = [
+              <MiniKpi
+                key="dizimos"
+                icon={<HandCoins />}
+                label="Dízimos e Ofertas"
+                value={moeda.formatar(totalDizimos)}
+                delay={0}
+              />,
+              comCardMeta && (
+                <MiniKpi
+                  key="meta"
+                  icon={<Target />}
+                  label="Meta de Dízimos"
+                  value={moeda.formatar(metaTotal)}
+                  delay={1}
+                />
+              ),
+              <MiniKpi
+                key="receita"
+                icon={<Wallet />}
+                label="Receita Total"
+                value={moeda.formatar(totalCredito)}
+                delay={2}
+              />,
+              <MiniKpi
+                key="despesa"
+                icon={<TrendingDown />}
+                label="Despesa Total"
+                value={moeda.formatar(totalDebito)}
+                iconColor="#FF7A70"
+                delay={3}
+              />,
+              <MiniKpi
+                key="percapta"
+                icon={<User />}
+                label="Dízimo per Capta"
+                value={semMembresia ? "—" : moeda.formatar(perCapta)}
+                nota={nota}
+                delay={4}
+              />,
+              <MiniKpi
+                key="membresia"
+                icon={<Users />}
+                label="Membresia"
+                value={semMembresia ? "—" : membMedia.toLocaleString("pt-BR")}
+                nota={nota}
+                delay={5}
+              />,
+              <MiniKpi
+                key="eventos"
+                icon={<Banknote />}
+                label="Eventos de Depósitos"
+                value={eventosDepositos.toLocaleString("pt-BR")}
+                delay={6}
+              />,
+              <MiniKpi
+                key="taxa"
+                icon={<Percent />}
+                label="Taxa de Depositantes"
+                value={
+                  semMembresia
+                    ? "—"
+                    : taxaDep.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 1,
+                        maximumFractionDigits: 1,
+                      }) + "%"
+                }
+                nota={nota}
+                delay={7}
+              />,
+            ].filter(Boolean);
+            const naPrimeira = cards.length - 4;
+            return cards.map((card, i) => (
+              <div
+                key={i}
+                className={`flex min-h-0 [&>*]:flex-1 ${
+                  i < naPrimeira && naPrimeira === 3 ? "col-span-4" : "col-span-3"
+                }`}
+              >
+                {card}
+              </div>
+            ));
+          })()}
         </div>
 
         {/* Coluna da direita: saldo em cima, os dois donuts embaixo. */}
@@ -775,9 +857,13 @@ export function Section1Total({
          * absolutos sobre a área inteira, e estes vãos vazios seguram o lugar
          * deles na grade para que nada se espalhe quando um abre.
          */}
-        <div className="grid min-h-0 grid-cols-2 gap-4">
+        {/*
+         * Sem meta de dízimos, o gráfico de meta não existe e o de Entradas x
+         * Despesas fica com a linha inteira.
+         */}
+        <div className={`grid min-h-0 gap-4 ${comGraficoMeta ? "grid-cols-2" : "grid-cols-1"}`}>
           <div ref={vaoTotaisRef} className="min-h-0 min-w-0" aria-hidden />
-          <div ref={vaoMetaRef} className="min-h-0 min-w-0" aria-hidden />
+          {comGraficoMeta && <div ref={vaoMetaRef} className="min-h-0 min-w-0" aria-hidden />}
         </div>
 
         {/*
@@ -824,7 +910,7 @@ export function Section1Total({
                 />
                 <YAxis
                   tick={{ fontSize: 11, fill: EIXO }}
-                  tickFormatter={BRLcompact}
+                  tickFormatter={moeda.compacto}
                   width={72}
                   axisLine={false}
                   tickLine={false}
@@ -859,119 +945,129 @@ export function Section1Total({
           </Painel>
         </Flutuante>
 
-        {/* Dízimos e Ofertas vs. Meta — mesma mecânica de expansão. */}
-        <Flutuante caixa={caixaDe("meta")} animar={animar} camada={camadaDe("meta")}>
-          <Painel
-            titulo="Dízimos e Ofertas vs. Meta"
-            legenda="Dízimos e ofertas mensais vs. meta mensal"
-            delay={7}
-            className="h-full"
-            acao={<BotaoExpandir aberto={expandido === "meta"} onClick={() => alternar("meta")} />}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart
-                data={monthlyDizimosMeta}
-                margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
-                <XAxis
-                  dataKey="mes"
-                  tick={{ fontSize: 11, fill: EIXO }}
-                  axisLine={{ stroke: "rgba(255,255,255,.22)" }}
-                  tickLine={false}
-                />
-                {/*
-                 * O topo do eixo tem de caber a meta. Enquanto ela era uma série,
-                 * o eixo a enxergava sozinho; agora é só uma régua desenhada por
-                 * cima, e sem este domínio ela seria recortada para fora do
-                 * gráfico sempre que o realizado ficasse abaixo dela — que é
-                 * justamente quando olhar para a meta importa.
-                 */}
-                <YAxis
-                  tick={{ fontSize: 11, fill: EIXO }}
-                  tickFormatter={BRLcompact}
-                  width={72}
-                  axisLine={false}
-                  tickLine={false}
-                  domain={[0, (dataMax: number) => Math.max(dataMax, metaMensal) * 1.05]}
-                />
-                {/*
-                 * A meta entra no tooltip pela mão: ela não é mais uma série do
-                 * gráfico, e sim a régua desenhada pela ReferenceLine abaixo.
-                 */}
-                <Tooltip
-                  cursor={{ fill: "rgba(255,255,255,.05)" }}
-                  content={({ active, payload, label }: any) =>
-                    active && payload?.length ? (
-                      <CaixaTooltip
-                        titulo={label}
-                        linhas={[
-                          {
-                            cor: payload[0].payload.pct >= 100 ? BLUE : AZUL_CLARO,
-                            nome: "Real",
-                            valor: payload[0].value,
-                          },
-                          { cor: VERMELHO_META, nome: "Meta", valor: metaMensal },
-                        ]}
-                      />
-                    ) : null
-                  }
-                />
-                {/*
-                 * Legenda escrita à mão: a meta deixou de ser série e some da
-                 * legenda automática. O `payload` de cada entrada não é enfeite —
-                 * é de lá que a legenda lê o tracejado ao desenhar a linha.
-                 */}
-                <Legend
-                  wrapperStyle={{ fontSize: 11, color: EIXO }}
-                  iconSize={8}
-                  payload={[
-                    {
-                      value: "Real",
-                      type: "rect",
-                      id: "real",
-                      color: BLUE,
-                      payload: { strokeDasharray: "" },
-                    },
-                    {
-                      value: "Meta",
-                      type: "plainline",
-                      id: "meta",
-                      color: VERMELHO_META,
-                      payload: { strokeDasharray: "6 4" },
-                    },
-                  ]}
-                />
-                <Bar
-                  dataKey="real"
-                  name="Real"
-                  radius={[6, 6, 0, 0]}
-                  animationDuration={900}
-                  isAnimationActive={animarGraficos}
+        {/*
+         * Dízimos e Ofertas vs. Meta — mesma mecânica de expansão. Só existe com
+         * meta: sem ela, a pergunta do gráfico não existe, e a cor das barras,
+         * que é a própria meta (forte quando bateu, clara quando ficou abaixo),
+         * pintaria todo mês como "abaixo da meta". A série mensal de dízimos
+         * continua na Seção 2.
+         */}
+        {comGraficoMeta && (
+          <Flutuante caixa={caixaDe("meta")} animar={animar} camada={camadaDe("meta")}>
+            <Painel
+              titulo="Dízimos e Ofertas vs. Meta"
+              legenda="Dízimos e ofertas mensais vs. meta mensal"
+              delay={7}
+              className="h-full"
+              acao={
+                <BotaoExpandir aberto={expandido === "meta"} onClick={() => alternar("meta")} />
+              }
+            >
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart
+                  data={monthlyDizimosMeta}
+                  margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
                 >
-                  {monthlyDizimosMeta.map((d, i) => (
-                    <Cell key={i} fill={d.pct >= 100 ? BLUE : AZUL_CLARO} />
-                  ))}
-                </Bar>
-                {/*
-                 * Régua, não série. Como Line, a meta nascia no centro da célula
-                 * de janeiro e morria no centro da última — sobrava meia coluna
-                 * vazia de cada lado. A ReferenceLine atravessa a área plotada
-                 * inteira, de extremidade a extremidade, como as barras.
-                 * extendDomain porque, sem a série, o eixo Y não conhecia mais a
-                 * meta e a régua poderia cair fora do gráfico.
-                 */}
-                <ReferenceLine
-                  y={metaMensal}
-                  ifOverflow="extendDomain"
-                  stroke={VERMELHO_META}
-                  strokeWidth={2}
-                  strokeDasharray="6 4"
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </Painel>
-        </Flutuante>
+                  <CartesianGrid strokeDasharray="3 3" stroke={GRID} />
+                  <XAxis
+                    dataKey="mes"
+                    tick={{ fontSize: 11, fill: EIXO }}
+                    axisLine={{ stroke: "rgba(255,255,255,.22)" }}
+                    tickLine={false}
+                  />
+                  {/*
+                   * O topo do eixo tem de caber a meta. Enquanto ela era uma série,
+                   * o eixo a enxergava sozinho; agora é só uma régua desenhada por
+                   * cima, e sem este domínio ela seria recortada para fora do
+                   * gráfico sempre que o realizado ficasse abaixo dela — que é
+                   * justamente quando olhar para a meta importa.
+                   */}
+                  <YAxis
+                    tick={{ fontSize: 11, fill: EIXO }}
+                    tickFormatter={moeda.compacto}
+                    width={72}
+                    axisLine={false}
+                    tickLine={false}
+                    domain={[0, (dataMax: number) => Math.max(dataMax, metaMensal) * 1.05]}
+                  />
+                  {/*
+                   * A meta entra no tooltip pela mão: ela não é mais uma série do
+                   * gráfico, e sim a régua desenhada pela ReferenceLine abaixo.
+                   */}
+                  <Tooltip
+                    cursor={{ fill: "rgba(255,255,255,.05)" }}
+                    content={({ active, payload, label }: any) =>
+                      active && payload?.length ? (
+                        <CaixaTooltip
+                          titulo={label}
+                          linhas={[
+                            {
+                              cor: payload[0].payload.pct >= 100 ? BLUE : AZUL_CLARO,
+                              nome: "Real",
+                              valor: payload[0].value,
+                            },
+                            { cor: VERMELHO_META, nome: "Meta", valor: metaMensal },
+                          ]}
+                        />
+                      ) : null
+                    }
+                  />
+                  {/*
+                   * Legenda escrita à mão: a meta deixou de ser série e some da
+                   * legenda automática. O `payload` de cada entrada não é enfeite —
+                   * é de lá que a legenda lê o tracejado ao desenhar a linha.
+                   */}
+                  <Legend
+                    wrapperStyle={{ fontSize: 11, color: EIXO }}
+                    iconSize={8}
+                    payload={[
+                      {
+                        value: "Real",
+                        type: "rect",
+                        id: "real",
+                        color: BLUE,
+                        payload: { strokeDasharray: "" },
+                      },
+                      {
+                        value: "Meta",
+                        type: "plainline",
+                        id: "meta",
+                        color: VERMELHO_META,
+                        payload: { strokeDasharray: "6 4" },
+                      },
+                    ]}
+                  />
+                  <Bar
+                    dataKey="real"
+                    name="Real"
+                    radius={[6, 6, 0, 0]}
+                    animationDuration={900}
+                    isAnimationActive={animarGraficos}
+                  >
+                    {monthlyDizimosMeta.map((d, i) => (
+                      <Cell key={i} fill={d.pct >= 100 ? BLUE : AZUL_CLARO} />
+                    ))}
+                  </Bar>
+                  {/*
+                   * Régua, não série. Como Line, a meta nascia no centro da célula
+                   * de janeiro e morria no centro da última — sobrava meia coluna
+                   * vazia de cada lado. A ReferenceLine atravessa a área plotada
+                   * inteira, de extremidade a extremidade, como as barras.
+                   * extendDomain porque, sem a série, o eixo Y não conhecia mais a
+                   * meta e a régua poderia cair fora do gráfico.
+                   */}
+                  <ReferenceLine
+                    y={metaMensal}
+                    ifOverflow="extendDomain"
+                    stroke={VERMELHO_META}
+                    strokeWidth={2}
+                    strokeDasharray="6 4"
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </Painel>
+          </Flutuante>
+        )}
       </div>
 
       {hoverMes !== null &&
@@ -994,7 +1090,7 @@ export function Section1Total({
             <div className="flex items-center justify-between border-b border-line-strong bg-th px-4 py-2.5 text-ink">
               <p className="truncate font-semibold">Maiores despesas {MESES[hoverMes - 1]}</p>
               <p className="ml-3 font-semibold whitespace-nowrap text-orange-300">
-                Despesa total = {fmtBRL(rankingMesTotal)}
+                Despesa total = {moeda.formatar(rankingMesTotal)}
               </p>
             </div>
             <div className="max-h-[180px] overflow-y-auto">
@@ -1014,7 +1110,7 @@ export function Section1Total({
                       <td className="px-3 py-1.5 text-ink-2">{t.nat4}</td>
                       <td className="px-3 py-1.5 text-ink-2">{t.projeto}</td>
                       <td className="px-3 py-1.5 text-right font-medium tabular-nums text-ink">
-                        {fmtBRL(t.soma)}
+                        {moeda.formatar(t.soma)}
                       </td>
                     </tr>
                   ))}
@@ -1075,12 +1171,15 @@ function MiniKpi({
   icon,
   label,
   value,
+  nota,
   iconColor,
   delay,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
+  /** Uma linha miúda sob o valor — o porquê de um "—". */
+  nota?: string;
   iconColor?: string;
   delay: number;
 }) {
@@ -1100,6 +1199,7 @@ function MiniKpi({
       <p className="w-full truncate text-[21px] font-semibold leading-tight tabular-nums text-ink">
         {value}
       </p>
+      {nota && <p className="-mt-2 text-[12.5px] leading-snug text-ink-3">{nota}</p>}
     </motion.div>
   );
 }
@@ -1122,6 +1222,7 @@ function DonutCard({
   const palette = colors;
   // Lê o contexto por conta própria: é um componente à parte da seção.
   const animarGraficos = useAnimarGraficos();
+  const { moeda } = useBaseAtiva();
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -1164,7 +1265,7 @@ function DonutCard({
                   return (
                     <div className="rounded-lg border border-white/[.16] bg-[#161A21] px-3 py-2 text-xs shadow-panel-lg">
                       <p className="font-semibold text-[#F6F8FB]">{d.name}</p>
-                      <p className="text-ink tabular-nums">{fmtBRL(d.value as number)}</p>
+                      <p className="text-ink tabular-nums">{moeda.formatar(d.value as number)}</p>
                       <p className="text-ink-2">{fmtPct(pct)} do total</p>
                     </div>
                   );

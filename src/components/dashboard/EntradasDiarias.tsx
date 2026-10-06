@@ -15,6 +15,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Columns2 } from "lucide-react";
 import { MESES } from "@/lib/format";
+import { useBaseAtiva } from "@/lib/baseAtiva";
+import { desenha, type Presenca } from "@/lib/presenca";
 import {
   isDizimosOfertas,
   membershipForMonth,
@@ -75,9 +77,17 @@ const UI = {
  */
 const ALT_PLOT = 312;
 
+/*
+ * A altura das duas linhas de meta da tabela ("Meta" e "% Real / Meta"),
+ * medida no navegador. Sem meta na carga elas não existem, e esta altura passa
+ * para os gráficos — senão sobraria um vão no pé da seção.
+ */
+const ALT_LINHAS_DE_META = 52;
+
 const nf = (n: number, d = 0) =>
   (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const brl = (n: number) => "R$ " + nf(n, 2);
+/* O símbolo vem da base aberta: "R$" no Brasil, "Kz" em Angola. */
+const brl = (n: number, simbolo: string) => simbolo + " " + nf(n, 2);
 
 const diasNoMes = (ano: number, m: number) => new Date(ano, m + 1, 0).getDate();
 
@@ -175,11 +185,12 @@ function eixoY(max: number) {
   return { p, top: Math.ceil(max / p) * p };
 }
 
-function rotuloEixo(v: number) {
-  if (Math.abs(v) >= 1e6) return "R$ " + (v / 1e6).toFixed(v % 1e6 ? 1 : 0).replace(".", ",") + "M";
+function rotuloEixo(v: number, simbolo: string) {
+  if (Math.abs(v) >= 1e6)
+    return simbolo + " " + (v / 1e6).toFixed(v % 1e6 ? 1 : 0).replace(".", ",") + "M";
   if (Math.abs(v) >= 1000)
-    return "R$ " + (v / 1000).toFixed(v % 1000 ? 1 : 0).replace(".", ",") + "k";
-  return "R$ " + nf(v);
+    return simbolo + " " + (v / 1000).toFixed(v % 1000 ? 1 : 0).replace(".", ",") + "k";
+  return simbolo + " " + nf(v);
 }
 
 function useLargura<T extends HTMLElement>(min = 280) {
@@ -201,6 +212,12 @@ function useLargura<T extends HTMLElement>(min = 280) {
 interface Props {
   /** Como nomear o recorte sem filtro de unidade — ver a nota no Dashboard. */
   rotuloTodasUnidades: string;
+  /**
+   * O que a carga tem, decidido no servidor — ver src/lib/presenca.ts. Sem
+   * meta de dízimos, nada de meta é desenhado aqui: nem a linha tracejada, nem
+   * a legenda, nem a diferença no tooltip, nem as linhas da tabela.
+   */
+  presenca: Presenca;
   /** Base já recortada pelos filtros universais do cabeçalho. */
   financial: FinancialRow[];
   /**
@@ -230,6 +247,7 @@ interface Foco {
 
 export function EntradasDiarias({
   rotuloTodasUnidades,
+  presenca,
   financial,
   financialBruto,
   financialTodosMeses,
@@ -244,7 +262,10 @@ export function EntradasDiarias({
   const [split, setSplit] = useState(false);
   const [pin, setPin] = useState<Foco | null>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const alt = ALT_PLOT;
+  const { base } = useBaseAtiva();
+  const comMeta = desenha(presenca, "metaNosGraficosDiarios");
+  const comLinhasDeMeta = desenha(presenca, "linhasDeMetaDaTabela");
+  const alt = ALT_PLOT + (comLinhasDeMeta ? 0 : ALT_LINHAS_DE_META);
 
   /*
    * Os filtros são universais e vivem no cabeçalho. Aqui só traduzimos o que
@@ -325,8 +346,8 @@ export function EntradasDiarias({
     () =>
       todasUnidades
         ? metaAnualTotalGeral
-        : unis.reduce((s, u) => s + metaAnualDaUnidade(metaAnualPorUnidade, u), 0),
-    [metaAnualPorUnidade, metaAnualTotalGeral, unis.join("|"), todasUnidades],
+        : unis.reduce((s, u) => s + metaAnualDaUnidade(metaAnualPorUnidade, u, base), 0),
+    [metaAnualPorUnidade, metaAnualTotalGeral, unis.join("|"), todasUnidades, base],
   );
 
   /* Multiplica pelos anos porque os totais também somam quando mais de um ano
@@ -418,7 +439,7 @@ export function EntradasDiarias({
             Entradas Dízimos e Ofertas — {anoTexto}
           </h1>
           <p className="mt-1 text-[13px] text-ink-2">
-            Acumulado diário vs. meta mensal · {uniTexto}
+            {comMeta ? "Acumulado diário vs. meta mensal" : "Acumulado diário"} · {uniTexto}
           </p>
         </div>
 
@@ -458,6 +479,7 @@ export function EntradasDiarias({
               curvas={agregadoTodosMeses.curvas}
               totalPorMes={agregadoTodosMeses.totalPorMes}
               metaMensal={metaMensal}
+              comMeta={comMeta}
               anoTexto={anoTexto}
               alt={alt}
             />
@@ -466,6 +488,7 @@ export function EntradasDiarias({
             meses={mesesAtivos}
             curvas={curvas}
             metaMensal={metaMensal}
+            comMeta={comMeta}
             mesAtual={mesAtual}
             mesParcial={mesParcial}
             foco={foco}
@@ -480,6 +503,7 @@ export function EntradasDiarias({
       <TabelaPeriodo
         totalPorMes={tabela.totalPorMes}
         metaMensal={metaMensalTabela}
+        comLinhasDeMeta={comLinhasDeMeta}
         anoAntPorMes={anoAntPorMes}
         membPorMes={membPorMes}
         eventosPorMes={tabela.eventosPorMes}
@@ -499,6 +523,7 @@ function GraficoAcumulado({
   meses,
   curvas,
   metaMensal,
+  comMeta,
   mesAtual,
   mesParcial,
   foco,
@@ -510,6 +535,8 @@ function GraficoAcumulado({
   meses: number[];
   curvas: Array<Array<number | null> | null>;
   metaMensal: number;
+  /** Sem meta na carga: nenhuma das peças de meta é desenhada. */
+  comMeta: boolean;
   mesAtual: number;
   mesParcial: number;
   foco: Foco | null;
@@ -521,6 +548,7 @@ function GraficoAcumulado({
   const [hostRef, W] = useLargura<HTMLDivElement>(360);
   const [cursor, setCursor] = useState<{ d: number; y: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const { moeda } = useBaseAtiva();
 
   const H = alt;
   const L = 64;
@@ -650,13 +678,14 @@ function GraficoAcumulado({
    * O rótulo carrega o nome do mês para não deixar dúvida de qual linha é.
    */
   const diffTip = useMemo(() => {
-    if (!cursor) return undefined;
+    // Sem meta, não há contra o que medir a diferença.
+    if (!cursor || !comMeta) return undefined;
     const alvo = foco?.tipo === "mes" && foco.m != null ? foco.m : mesAtual;
     if (alvo == null || alvo < 0 || !meses.includes(alvo)) return undefined;
     const v = curvas[alvo]?.[cursor.d - 1];
     if (v == null) return undefined;
     return { k: `Diferença (${MESES[alvo]})`, v: v - (metaMensal * cursor.d) / 31 };
-  }, [cursor, foco, mesAtual, meses.join(","), curvas, metaMensal]);
+  }, [cursor, foco, mesAtual, meses.join(","), curvas, metaMensal, comMeta]);
 
   const opMeta = foco && foco.tipo !== "meta" ? 0.25 : 1;
   const subtitulo =
@@ -679,7 +708,7 @@ function GraficoAcumulado({
             <g key={g}>
               <line x1={L} x2={R} y1={Y(g)} y2={Y(g)} stroke={UI.grid} strokeWidth={1} />
               <text x={L - 9} y={Y(g) + 4} textAnchor="end" fill={UI.eixo} fontSize={11}>
-                {rotuloEixo(g)}
+                {rotuloEixo(g, moeda.simbolo)}
               </text>
             </g>
           ))}
@@ -690,14 +719,16 @@ function GraficoAcumulado({
           ))}
           <line x1={L} x2={R} y1={B} y2={B} stroke={UI.base} strokeWidth={1} />
 
-          <polyline
-            points={metaPontos}
-            fill="none"
-            stroke={CMETA}
-            strokeWidth={2}
-            strokeDasharray="6 5"
-            opacity={opMeta}
-          />
+          {comMeta && (
+            <polyline
+              points={metaPontos}
+              fill="none"
+              stroke={CMETA}
+              strokeWidth={2}
+              strokeDasharray="6 5"
+              opacity={opMeta}
+            />
+          )}
 
           {/* Cada linha é desenhada duas vezes: um contorno na cor do fundo abre
               um vão nos cruzamentos, de modo que a de cima leia como passando
@@ -773,14 +804,16 @@ function GraficoAcumulado({
                   />
                 );
               })}
-              <circle
-                cx={X(cursor.d)}
-                cy={Y((metaMensal * cursor.d) / 31)}
-                r={3.6}
-                fill={CMETA}
-                stroke={UI.anel}
-                strokeWidth={1.6}
-              />
+              {comMeta && (
+                <circle
+                  cx={X(cursor.d)}
+                  cy={Y((metaMensal * cursor.d) / 31)}
+                  r={3.6}
+                  fill={CMETA}
+                  stroke={UI.anel}
+                  strokeWidth={1.6}
+                />
+              )}
             </>
           )}
 
@@ -838,25 +871,27 @@ function GraficoAcumulado({
             </button>
           );
         })}
-        <button
-          type="button"
-          onClick={() => onPin(pin?.tipo === "meta" ? null : { tipo: "meta" })}
-          className={`inline-flex items-center gap-[5px] px-[5px] py-[3px] rounded-[5px] text-[11.5px] transition ${
-            pin?.tipo === "meta"
-              ? "bg-acc/20 text-[#9DBCFF] font-semibold"
-              : pin
-                ? "opacity-40 text-ink-2 hover:bg-white/10"
-                : "text-ink-2 hover:bg-white/[.13] hover:text-[#F6F8FB]"
-          }`}
-        >
-          <i
-            className="inline-block w-[14px] h-[2.5px] rounded-[2px]"
-            style={{
-              background: `repeating-linear-gradient(90deg, ${CMETA} 0 4px, transparent 4px 7px)`,
-            }}
-          />
-          Meta
-        </button>
+        {comMeta && (
+          <button
+            type="button"
+            onClick={() => onPin(pin?.tipo === "meta" ? null : { tipo: "meta" })}
+            className={`inline-flex items-center gap-[5px] px-[5px] py-[3px] rounded-[5px] text-[11.5px] transition ${
+              pin?.tipo === "meta"
+                ? "bg-acc/20 text-[#9DBCFF] font-semibold"
+                : pin
+                  ? "opacity-40 text-ink-2 hover:bg-white/10"
+                  : "text-ink-2 hover:bg-white/[.13] hover:text-[#F6F8FB]"
+            }`}
+          >
+            <i
+              className="inline-block w-[14px] h-[2.5px] rounded-[2px]"
+              style={{
+                background: `repeating-linear-gradient(90deg, ${CMETA} 0 4px, transparent 4px 7px)`,
+              }}
+            />
+            Meta
+          </button>
+        )}
       </div>
     </div>
   );
@@ -885,6 +920,7 @@ function Tooltip({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [dim, setDim] = useState({ w: 170, h: 90 });
+  const { moeda } = useBaseAtiva();
   useLayoutEffect(() => {
     if (ref.current) setDim({ w: ref.current.offsetWidth, h: ref.current.offsetHeight });
   }, [linhas.length, titulo]);
@@ -911,7 +947,7 @@ function Tooltip({
           >
             <i className="h-2 w-2 shrink-0 rounded-full" style={{ background: l.cor }} />
             <span className={`min-w-[30px] ${forte ? "text-[#F2F5F8]" : "text-ink-2"}`}>{l.k}</span>
-            <span className="ml-auto font-medium tabular-nums">{brl(l.v)}</span>
+            <span className="ml-auto font-medium tabular-nums">{brl(l.v, moeda.simbolo)}</span>
           </div>
         );
       })}
@@ -923,7 +959,7 @@ function Tooltip({
             style={{ color: rodape.v >= 0 ? "#4FCF95" : "#FF7A70" }}
           >
             {rodape.v >= 0 ? "+" : ""}
-            {brl(rodape.v)}
+            {brl(rodape.v, moeda.simbolo)}
           </span>
         </div>
       )}
@@ -940,6 +976,7 @@ function CarrosselMeses({
   curvas,
   totalPorMes,
   metaMensal,
+  comMeta,
   anoTexto,
   alt,
 }: {
@@ -947,10 +984,12 @@ function CarrosselMeses({
   curvas: Array<Array<number | null> | null>;
   totalPorMes: number[];
   metaMensal: number;
+  comMeta: boolean;
   anoTexto: string;
   alt: number;
 }) {
   const [viewRef, W] = useLargura<HTMLDivElement>(280);
+  const { moeda } = useBaseAtiva();
   const cuboRef = useRef<HTMLDivElement>(null);
   const [idx, setIdx] = useState(Math.max(0, meses.length - 1));
   const [animando, setAnimando] = useState(false);
@@ -1088,9 +1127,16 @@ function CarrosselMeses({
           {m != null ? `Gráfico 2 — ${MESL[m]} / ${anoTexto}` : "Gráfico 2"}
         </div>
         <div className="text-[12.5px] text-ink-2 mt-0.5">
-          {total != null && pct != null ? (
+          {!comMeta ? (
+            // Sem meta, o fechamento vem sozinho: não há "% vs meta" a mostrar.
+            total != null ? (
+              <>Fechamento {brl(total, moeda.simbolo)}</>
+            ) : (
+              "Sem meses anteriores no período"
+            )
+          ) : total != null && pct != null ? (
             <>
-              Fechamento {brl(total)} ·{" "}
+              Fechamento {brl(total, moeda.simbolo)} ·{" "}
               <span className="font-semibold" style={{ color: pct >= 0 ? "#4FCF95" : "#FF7A70" }}>
                 {pct >= 0 ? "+" : ""}
                 {nf(pct, 1)}% vs meta
@@ -1170,6 +1216,7 @@ function CarrosselMeses({
                       m={mm}
                       curva={curvas[mm]}
                       metaMensal={metaMensal}
+                      comMeta={comMeta}
                       W={W}
                       anoTexto={anoTexto}
                       alt={alt}
@@ -1208,6 +1255,7 @@ function SlideMes({
   m,
   curva,
   metaMensal,
+  comMeta,
   W,
   anoTexto,
   alt,
@@ -1216,6 +1264,7 @@ function SlideMes({
   m: number;
   curva: Array<number | null> | null;
   metaMensal: number;
+  comMeta: boolean;
   W: number;
   anoTexto: string;
   alt: number;
@@ -1223,6 +1272,7 @@ function SlideMes({
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [cursor, setCursor] = useState<{ d: number; y: number } | null>(null);
+  const { moeda } = useBaseAtiva();
 
   const H = alt;
   const L = 64;
@@ -1288,7 +1338,7 @@ function SlideMes({
             <g key={g}>
               <line x1={L} x2={R} y1={Y(g)} y2={Y(g)} stroke={UI.grid} strokeWidth={1} />
               <text x={L - 9} y={Y(g) + 4} textAnchor="end" fill={UI.eixo} fontSize={11}>
-                {rotuloEixo(g)}
+                {rotuloEixo(g, moeda.simbolo)}
               </text>
             </g>
           ))}
@@ -1298,13 +1348,15 @@ function SlideMes({
             </text>
           ))}
           <line x1={L} x2={R} y1={B} y2={B} stroke={UI.base} strokeWidth={1} />
-          <polyline
-            points={metaP.trim()}
-            fill="none"
-            stroke={CMETA}
-            strokeWidth={2}
-            strokeDasharray="6 5"
-          />
+          {comMeta && (
+            <polyline
+              points={metaP.trim()}
+              fill="none"
+              stroke={CMETA}
+              strokeWidth={2}
+              strokeDasharray="6 5"
+            />
+          )}
           {pts && (
             <>
               <path d={area} fill={COR[m]} opacity={0.2} />
@@ -1348,14 +1400,16 @@ function SlideMes({
                   strokeWidth={1.8}
                 />
               )}
-              <circle
-                cx={X(cursor.d)}
-                cy={Y(vMeta)}
-                r={4}
-                fill={CMETA}
-                stroke={UI.anel}
-                strokeWidth={1.8}
-              />
+              {comMeta && (
+                <circle
+                  cx={X(cursor.d)}
+                  cy={Y(vMeta)}
+                  r={4}
+                  fill={CMETA}
+                  stroke={UI.anel}
+                  strokeWidth={1.8}
+                />
+              )}
             </>
           )}
           <rect
@@ -1379,9 +1433,9 @@ function SlideMes({
             titulo={`${MESL[m]} · dia ${cursor.d}`}
             linhas={[
               ...(vAtual != null ? [{ cor: COR[m], k: MESES[m], v: vAtual }] : []),
-              { cor: CMETA, k: "Meta", v: vMeta },
+              ...(comMeta ? [{ cor: CMETA, k: "Meta", v: vMeta }] : []),
             ]}
-            rodape={vAtual != null ? { k: "Diferença", v: vAtual - vMeta } : undefined}
+            rodape={comMeta && vAtual != null ? { k: "Diferença", v: vAtual - vMeta } : undefined}
           />
         )}
       </div>
@@ -1398,6 +1452,7 @@ function SlideMes({
 function TabelaPeriodo({
   totalPorMes,
   metaMensal,
+  comLinhasDeMeta,
   anoAntPorMes,
   membPorMes,
   eventosPorMes,
@@ -1409,6 +1464,8 @@ function TabelaPeriodo({
 }: {
   totalPorMes: number[];
   metaMensal: number;
+  /** Sem meta na carga, as linhas "Meta" e "% Real / Meta" não existem. */
+  comLinhasDeMeta: boolean;
   anoAntPorMes: number[];
   membPorMes: number[];
   eventosPorMes: number[];
@@ -1420,6 +1477,7 @@ function TabelaPeriodo({
 }) {
   const TODOS = Array.from({ length: 12 }, (_, i) => i);
   const vazio = (m: number) => !mesesComDado.includes(m);
+  const { moeda } = useBaseAtiva();
   /*
    * O mês em curso não tinge as células: o destaque dele vive no cabeçalho da
    * coluna e no asterisco da linha Meta, e só. Uma coluna inteira em laranja
@@ -1501,7 +1559,7 @@ function TabelaPeriodo({
       <div className="flex flex-wrap items-center justify-between gap-3.5 border-b border-line-strong px-[18px] py-1.5">
         <h3 className="text-[14.5px] font-semibold text-ink">Números do período — {anoTexto}</h3>
         <div className="text-xs text-ink-3">
-          Ano inteiro · valores em milhares de reais
+          Ano inteiro · valores em milhares de {moeda.nomePlural}
           {mesParcial >= 0 && (
             <span className="text-[#B0803A]">
               {" · "}* mês em curso, dados parciais até o dia {diaCorte}
@@ -1515,7 +1573,7 @@ function TabelaPeriodo({
           <thead>
             <tr>
               <th className="sticky left-0 z-[2] bg-th text-left px-2.5 py-1.5 text-[11px] font-semibold text-ink-3 uppercase tracking-[0.04em] border-b border-line-strong min-w-[186px]">
-                Milhares de reais
+                Milhares de {moeda.nomePlural}
               </th>
               {TODOS.map((m) => (
                 <th
@@ -1548,10 +1606,11 @@ function TabelaPeriodo({
               <TdTotal>{nf(somaVal / 1000)}</TdTotal>
             </Linha>
 
-            <Linha titulo="Meta">
-              {TODOS.map((m) => (
-                <Td key={m} m={m}>
-                  {/* O asterisco não entra na conta do alinhamento.
+            {comLinhasDeMeta && (
+              <Linha titulo="Meta">
+                {TODOS.map((m) => (
+                  <Td key={m} m={m}>
+                    {/* O asterisco não entra na conta do alinhamento.
 
                       A caixa dele tem largura zero, então a linha mede só o
                       número: a célula centraliza esse número no mesmo eixo
@@ -1570,37 +1629,40 @@ function TabelaPeriodo({
                       no <td> ela disputaria com o `text-ink` de lá: mesma
                       especificidade, vence quem sai por último no CSS
                       gerado, e não a ordem na string. */}
-                  {nf(metaDoMes(m) / 1000)}
-                  {m === mesParcial ? (
-                    <span className="relative left-[3px] inline-block w-0 whitespace-nowrap text-[#B0803A]">
-                      *
-                    </span>
-                  ) : (
-                    ""
-                  )}
-                </Td>
-              ))}
-              <TdTotal>{nf((metaMensal * 12) / 1000)}</TdTotal>
-            </Linha>
+                    {nf(metaDoMes(m) / 1000)}
+                    {m === mesParcial ? (
+                      <span className="relative left-[3px] inline-block w-0 whitespace-nowrap text-[#B0803A]">
+                        *
+                      </span>
+                    ) : (
+                      ""
+                    )}
+                  </Td>
+                ))}
+                <TdTotal>{nf((metaMensal * 12) / 1000)}</TdTotal>
+              </Linha>
+            )}
 
-            <Linha titulo="% Real / Meta">
-              {TODOS.map((m) => (
-                <Td key={m} m={m}>
-                  {/* Compara contra a meta que já venceu, não contra a do mês
+            {comLinhasDeMeta && (
+              <Linha titulo="% Real / Meta">
+                {TODOS.map((m) => (
+                  <Td key={m} m={m}>
+                    {/* Compara contra a meta que já venceu, não contra a do mês
                       cheio: no mês em curso faltam dias de lançamento, e medir
                       o realizado parcial contra a meta inteira mostraria uma
                       queda que é do calendário, não do desempenho. */}
-                  {vazio(m) || metaDoMes(m) <= 0 ? (
-                    ""
-                  ) : (
-                    <Pill v={(totalPorMes[m] / metaDoMes(m) - 1) * 100} />
-                  )}
-                </Td>
-              ))}
-              <TdTotal>
-                <Pill v={pctAcum} digits={1} />
-              </TdTotal>
-            </Linha>
+                    {vazio(m) || metaDoMes(m) <= 0 ? (
+                      ""
+                    ) : (
+                      <Pill v={(totalPorMes[m] / metaDoMes(m) - 1) * 100} />
+                    )}
+                  </Td>
+                ))}
+                <TdTotal>
+                  <Pill v={pctAcum} digits={1} />
+                </TdTotal>
+              </Linha>
+            )}
 
             <Linha titulo={`Dízimos e Ofertas ${anoAnt}`}>
               {TODOS.map((m) => (

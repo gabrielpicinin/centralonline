@@ -12,7 +12,8 @@ import {
   Cell,
 } from "recharts";
 import { motion } from "framer-motion";
-import { BRLcompact, fmtBRL, MESES } from "@/lib/format";
+import { MESES } from "@/lib/format";
+import { useBaseAtiva } from "@/lib/baseAtiva";
 import { norm, type FinancialRow } from "@/lib/parsers";
 import { useAnimarGraficos } from "./secaoAtiva";
 
@@ -34,6 +35,8 @@ function fadeIn(delay = 0) {
 }
 
 export function Section2Despesas({ financial }: Props) {
+  // A moeda da base aberta: "R$" no Brasil, "Kz" em Angola.
+  const { moeda } = useBaseAtiva();
   /*
    * Ano, unidade, mês, natureza, projeto e meta já vieram aplicados do
    * cabeçalho. Aqui só resta o recorte que é da seção: linhas de despesa.
@@ -118,7 +121,7 @@ export function Section2Despesas({ financial }: Props) {
     return (
       <div className="rounded-lg border border-white/[.16] bg-[#161A21] px-3 py-2 shadow-lg text-xs">
         <p className="font-semibold text-ink mb-1">{label ?? d.payload?.name}</p>
-        <p className="text-ink-2">{fmtBRL(d.value as number)}</p>
+        <p className="text-ink-2">{moeda.formatar(d.value as number)}</p>
       </div>
     );
   };
@@ -148,7 +151,7 @@ export function Section2Despesas({ financial }: Props) {
       <div className="rounded-lg border border-line-soft bg-panel shadow-xl text-xs overflow-hidden min-w-[520px]">
         <div className="flex items-center justify-between px-4 py-2.5 bg-th text-ink border-b border-line-strong">
           <p className="font-semibold">Maiores despesas {name}</p>
-          <p className="text-orange-300 font-semibold">Despesa total = {fmtBRL(total)}</p>
+          <p className="text-orange-300 font-semibold">Despesa total = {moeda.formatar(total)}</p>
         </div>
         <table className="w-full">
           <thead>
@@ -166,7 +169,7 @@ export function Section2Despesas({ financial }: Props) {
                 <td className="px-3 py-1.5 text-ink-2">{t.nat4}</td>
                 <td className="px-3 py-1.5 text-ink-2">{t.projeto}</td>
                 <td className="px-3 py-1.5 text-right tabular-nums text-ink font-medium">
-                  {fmtBRL(t.soma)}
+                  {moeda.formatar(t.soma)}
                 </td>
               </tr>
             ))}
@@ -376,7 +379,7 @@ export function Section2Despesas({ financial }: Props) {
                 <XAxis
                   type="number"
                   tick={{ fontSize: 12, fill: "#9AA6B6" }}
-                  tickFormatter={BRLcompact}
+                  tickFormatter={moeda.compacto}
                 />
                 <YAxis
                   type="category"
@@ -405,7 +408,7 @@ export function Section2Despesas({ financial }: Props) {
                   <LabelList
                     dataKey="value"
                     position="right"
-                    formatter={(v: number) => BRLcompact(v).replace(/\s/g, "\u00A0")}
+                    formatter={(v: number) => moeda.compacto(v).replace(/\s/g, "\u00A0")}
                     style={{ fontSize: 13, fill: "#E7ECF3", fontWeight: 600 }}
                   />
                 </Bar>
@@ -446,7 +449,7 @@ export function Section2Despesas({ financial }: Props) {
                   <XAxis
                     type="number"
                     tick={{ fontSize: 12, fill: "#9AA6B6" }}
-                    tickFormatter={BRLcompact}
+                    tickFormatter={moeda.compacto}
                   />
                   <YAxis
                     type="category"
@@ -479,7 +482,7 @@ export function Section2Despesas({ financial }: Props) {
                     <LabelList
                       dataKey="value"
                       position="right"
-                      formatter={(v: number) => BRLcompact(v).replace(/\s/g, "\u00A0")}
+                      formatter={(v: number) => moeda.compacto(v).replace(/\s/g, "\u00A0")}
                       style={{ fontSize: 13, fill: "#E7ECF3", fontWeight: 600 }}
                     />
                   </Bar>
@@ -506,7 +509,7 @@ export function Section2Despesas({ financial }: Props) {
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#9AA6B6" }} />
                 <YAxis
                   tick={{ fontSize: 11, fill: "#9AA6B6" }}
-                  tickFormatter={BRLcompact}
+                  tickFormatter={moeda.compacto}
                   width={80}
                 />
                 {/* O ranking substitui o tooltip padrão, como no 4º nível. */}
@@ -534,7 +537,7 @@ export function Section2Despesas({ financial }: Props) {
                     position="top"
                     // Compacto (R$ 3,8M) como nos outros gráficos da seção: por
                     // extenso, os rótulos de meses vizinhos se sobrepunham.
-                    formatter={(v: number) => BRLcompact(v).replace(/\s/g, " ")}
+                    formatter={(v: number) => moeda.compacto(v).replace(/\s/g, " ")}
                     style={{ fontSize: 13, fill: "#E7ECF3", fontWeight: 600 }}
                   />
                 </Bar>
@@ -564,7 +567,7 @@ export function Section2Despesas({ financial }: Props) {
             <div className="flex items-center justify-between px-4 py-2.5 bg-th text-ink border-b border-line-strong">
               <p className="font-semibold truncate">Maiores despesas {hoverNat4}</p>
               <p className="text-orange-300 font-semibold whitespace-nowrap ml-3">
-                Despesa total = {fmtBRL(rankingTotal)}
+                Despesa total = {moeda.formatar(rankingTotal)}
               </p>
             </div>
             <div className="max-h-[180px] overflow-y-auto">
@@ -584,7 +587,7 @@ export function Section2Despesas({ financial }: Props) {
                       <td className="px-3 py-1.5 text-ink-2">{t.nat4}</td>
                       <td className="px-3 py-1.5 text-ink-2">{t.projeto}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-ink font-medium">
-                        {fmtBRL(t.soma)}
+                        {moeda.formatar(t.soma)}
                       </td>
                     </tr>
                   ))}
@@ -625,7 +628,7 @@ export function Section2Despesas({ financial }: Props) {
                 {suffixFor("mes")}
               </p>
               <p className="ml-3 font-semibold whitespace-nowrap text-orange-300">
-                Despesa total = {fmtBRL(rankingMesTotal)}
+                Despesa total = {moeda.formatar(rankingMesTotal)}
               </p>
             </div>
             <div className="max-h-[180px] overflow-y-auto">
@@ -645,7 +648,7 @@ export function Section2Despesas({ financial }: Props) {
                       <td className="px-3 py-1.5 text-ink-2">{t.nat4}</td>
                       <td className="px-3 py-1.5 text-ink-2">{t.projeto}</td>
                       <td className="px-3 py-1.5 text-right font-medium tabular-nums text-ink">
-                        {fmtBRL(t.soma)}
+                        {moeda.formatar(t.soma)}
                       </td>
                     </tr>
                   ))}

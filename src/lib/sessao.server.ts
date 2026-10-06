@@ -9,7 +9,8 @@
  * Sufixo `.server`: só pode ser importado de dentro de um `.functions.ts`.
  */
 import { useSession } from "@tanstack/react-start/server";
-import { buscarPorId, unidadesDoPerfil } from "./banco.server";
+import { buscarPorId, unidadesDoPerfil, basesDoPerfil } from "./banco.server";
+import { BASES, type Base } from "./bases";
 
 export interface DadosSessao {
   unlocked?: boolean;
@@ -129,17 +130,31 @@ export async function exigirSessao(): Promise<DadosSessao> {
 }
 
 /**
- * As unidades que esta sessão pode ver. `null` significa "todas".
+ * As unidades que esta sessão pode ver NUMA BASE. `null` significa "todas".
  *
- * É daqui que sai o argumento de `lerBase`, a porta única de leitura. O valor
- * NUNCA vem do navegador: se viesse, bastaria alterá-lo na requisição para ver
- * qualquer unidade. Ele sai da sessão, e a sessão sai do cookie assinado.
+ * É daqui que sai o argumento de `lerBase`, a porta única de leitura. As
+ * unidades NUNCA vêm do navegador: se viessem, bastaria alterá-las na
+ * requisição para ver qualquer uma. Elas saem da sessão, e a sessão sai do
+ * cookie assinado.
+ *
+ * A BASE, sim, vem do navegador — com dois dashboards, ele precisa dizer qual
+ * quer. E é exatamente o parâmetro que este projeto sempre evitou. Por isso a
+ * regra, que não pode ser quebrada em lugar nenhum:
+ *
+ *   A base pedida é um PEDIDO, nunca uma autorização. Ela só escolhe em que
+ *   base procurar as permissões. As unidades são relidas no banco, a cada
+ *   requisição, DENTRO da base pedida. Um pastor que pede uma base onde não
+ *   tem nenhuma unidade recebe lista vazia — e lista vazia é "nada".
+ *
+ * Então pedir Angola sem ter Angola não dá erro nem dados: dá um dashboard
+ * vazio. E um pastor com "Central Sede" no Brasil não vê a "Central Sede" de
+ * Angola, porque a consulta já sai filtrada por base.
  *
  * O papel é reconferido no banco a cada leitura em vez de confiar no cookie.
  * Sem isso, tirar uma unidade de um pastor só valeria quando o cookie dele
  * vencesse — até sete dias depois.
  */
-export async function unidadesDaSessao(): Promise<string[] | null> {
+export async function unidadesDaSessao(base: Base): Promise<string[] | null> {
   const dados = await exigirSessao();
   if (!dados.perfilId) throw new Error("Não autorizado");
 
@@ -152,7 +167,7 @@ export async function unidadesDaSessao(): Promise<string[] | null> {
    * "nada" — não "tudo". Liberar acesso é sempre um ato explícito de quem
    * administra; nunca o resultado de um esquecimento.
    */
-  return unidadesDoPerfil(perfil.id);
+  return unidadesDoPerfil(perfil.id, base);
 }
 
 /** Só administradores. Usado pelas funções que enviam base e mudam permissões. */
@@ -161,4 +176,26 @@ export async function exigirAdministrador(): Promise<DadosSessao> {
   const perfil = dados.perfilId ? buscarPorId(dados.perfilId) : null;
   if (!perfil || !perfil.ativo || perfil.papel !== "admin") throw new Error("Não autorizado");
   return dados;
+}
+
+/**
+ * As bases que esta sessão pode abrir — para decidir, depois do login, se o
+ * pastor cai direto num dashboard, vê a tela de escolha, ou vê o alternador.
+ *
+ * O administrador abre todas. O pastor abre as bases onde tem ao menos uma
+ * unidade: é o que basesDoPerfil devolve, relido no banco a cada chamada.
+ *
+ * Isto só decide o que a TELA oferece. Não é autorização: quem pedir uma base
+ * fora desta lista direto ao servidor recebe dados vazios de lerBase, pela
+ * regra de unidadesDaSessao — esconder o botão nunca foi a proteção.
+ */
+export async function basesDaSessao(): Promise<Base[]> {
+  const dados = await exigirSessao();
+  if (!dados.perfilId) throw new Error("Não autorizado");
+
+  const perfil = buscarPorId(dados.perfilId);
+  if (!perfil || !perfil.ativo) throw new Error("Não autorizado");
+  if (perfil.papel === "admin") return [...BASES];
+
+  return basesDoPerfil(perfil.id);
 }

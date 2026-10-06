@@ -4,6 +4,9 @@ Dashboard executivo de dízimos, ofertas e despesas da rede Central. O Financeir
 envia as planilhas, e cada pastor entra com a própria conta e enxerga **apenas as
 unidades liberadas para ele**.
 
+São **duas bases independentes**, Brasil (em real) e Angola (em kwanza), cada
+uma com o seu dashboard. Elas nunca se misturam nem se somam.
+
 Roda num servidor da própria Central, na rede interna, acessível por VPN.
 
 > Para operar o sistema no dia a dia — backup, atualização, o que fazer quando
@@ -17,21 +20,29 @@ Roda num servidor da própria Central, na rede interna, acessível por VPN.
 | 1 — Total Geral         | KPIs do período, entradas x despesas, dízimos vs. meta, saldo por centro de resultado e dois donuts de distribuição |
 | 2 — Acumulado Diário    | Curva acumulada dia a dia contra a meta, comparação entre meses e a tabela do ano                                   |
 | 3 — Análise de Despesas | Naturezas de 3º e 4º nível e despesa mensal, com filtragem cruzada por clique                                       |
-| 4 — Controle de Metas   | Meta contra realizado por categoria, com naturezas agrupadas                                                        |
+| 4 — Controle de Metas   | Meta contra realizado por categoria, com naturezas agrupadas — só existe quando a carga tem metas nos lançamentos   |
 
-Os seis filtros do cabeçalho — Ano, Unidade, Mês, Natureza Nível 3, Projeto e
-Meta — são universais: valem para todas as seções ao mesmo tempo. Para um
-pastor, o filtro de Unidade só lista as unidades dele.
+Os filtros do cabeçalho — Ano, Unidade, Mês, Natureza Nível 3, Projeto e Meta —
+são universais: valem para todas as seções ao mesmo tempo. Para um pastor, o
+filtro de Unidade só lista as unidades dele.
+
+**O que é de meta só existe quando a carga tem meta.** As colunas "Meta Anual
+&lt;unidade&gt;" ligam o card e o gráfico de meta da Seção 1 e a meta da Seção 2; a
+coluna "Meta" dos lançamentos liga a Seção 4 e o filtro Meta. A decisão é
+tomada uma vez, no servidor, a partir dos dados — nunca pelo nome da base — e a
+lista de todos os blocos que dependem de meta está em `src/lib/presenca.ts`.
 
 ## Quem entra, e por onde
 
 ```
-Financeiro   login  ->  bases de dados + unidades por pastor  ->  dashboard
-Pastor       login  ->  dashboard (só as unidades dele)
+Financeiro           login  ->  envio por base + unidades por pastor  ->  dashboard (alternador)
+Pastor, uma base     login  ->  dashboard dessa base (sem alternador)
+Pastor, duas bases   login  ->  escolha da base  ->  dashboard (alternador)
 ```
 
 Existe **uma** conta de administrador, chamada `Financeiro`. Ela cadastra os
-pastores, gera a senha de cada um e marca as unidades que cada um enxerga.
+pastores, gera a senha de cada um e marca, base a base, as unidades que cada um
+enxerga. Ter acesso a uma base é ter ao menos uma unidade marcada nela.
 
 Não há cadastro público: conta só nasce pela mão do administrador. Na primeira
 vez que o sistema sobe, sem nenhuma conta no banco, o endereço mostra a criação
@@ -49,6 +60,32 @@ mesmo ver isso?".
 
 Filtrar na tela não é proteção: quem abre o painel do desenvolvedor lê o que foi
 baixado, escondido ou não.
+
+**A base é o único parâmetro que vem do navegador** — com dois dashboards, ele
+precisa dizer qual quer. Mas a base pedida é um pedido, nunca uma autorização:
+a cada requisição as unidades permitidas são relidas no banco **dentro da base
+pedida**. Quem pede uma base onde não tem unidade recebe a base vazia — sem
+erro e sem dados. Ver `unidadesDaSessao` em `src/lib/sessao.server.ts`.
+
+## As duas bases
+
+O que muda de uma base para a outra é **declarado** em `src/lib/bases.ts`, e não
+adivinhado pelo código: a coluna de unidade (Brasil no 1º nível, Angola no 2º),
+a coluna de data, a assinatura que recusa o arquivo trocado, a moeda, os
+arquivos que o envio aceita, as metas percentuais da Seção 4 e as regras da
+visão consolidada. Nenhum trecho do código pergunta `base === "angola"`.
+
+O que **não** é declarado ali é se a base tem meta: isso é fato de cada carga,
+decidido em `src/lib/presenca.ts` a partir dos dados.
+
+No banco, a base está em `cargas` e em `permissoes`; lançamentos, membresia,
+saldos e metas a herdam pela carga. Bancos criados antes das duas bases são
+migrados sozinhos na primeira partida — tudo o que existia vira Brasil. Como
+conferir a migração num banco de verdade está em [OPERACAO.md](OPERACAO.md).
+
+`metaAproximada` em `bases.ts` é transitória: o Brasil ainda aceita a busca de
+meta por nome aproximado até a planilha dele ter os cabeçalhos corrigidos; aí
+passa ao casamento exato, como Angola, e a propriedade sai.
 
 ## Rodando localmente
 
@@ -128,9 +165,31 @@ entram no projeto, e é justamente o momento coberto.
 npm test
 ```
 
-Oito testes, todos sobre a mesma coisa: garantir que um pastor nunca receba uma
-unidade que não é dele. Sem dependência — o próprio Node executa TypeScript e
-traz o executor de testes.
+Sem dependência — o próprio Node executa TypeScript e traz o executor de
+testes.
+
+| Arquivo                     | O que garante                                                          |
+| --------------------------- | ---------------------------------------------------------------------- |
+| `testes/recorte.test.ts`    | Um pastor nunca recebe uma unidade que não é dele.                     |
+| `testes/bases.test.ts`      | As duas bases nunca se misturam; enviar ou podar uma não toca a outra. |
+| `testes/migracao.test.ts`   | A migração para duas bases não perde uma linha, em cada esquema antigo. |
+| `testes/planilhas.test.ts`  | Cada planilha é lida pela base certa; o arquivo trocado é recusado.    |
+| `testes/metas.test.ts`      | Os blocos de meta aparecem e somem pelos dados da carga.               |
+| `testes/moeda.test.ts`      | O real sai idêntico ao de antes; o kwanza, com `Kz`.                   |
+| os demais                   | Visão consolidada, senha visível, origem do login.                     |
+
+Cada proteção foi conferida desfazendo-a de propósito: com ela desfeita, algum
+teste falha.
+
+Um teste fica pulado de propósito: o **ensaio da migração num banco de
+verdade**. Ele copia o arquivo apontado (que só é aberto para leitura), migra a
+cópia e confere a impressão digital de cada tabela. No PowerShell:
+
+```powershell
+$env:ENSAIO_BANCO = "C:\caminho\do\backup.db"
+node --test testes/migracao.test.ts
+Remove-Item Env:ENSAIO_BANCO
+```
 
 ## Qual Node
 
@@ -175,15 +234,17 @@ node ferramentas/empacotar.mjs
 
 |                                 |                                                                       |
 | ------------------------------- | --------------------------------------------------------------------- |
-| `src/lib/banco.server.ts`       | O único arquivo que fala SQL. `lerBase()` é a porta única de leitura. |
-| `src/lib/sessao.server.ts`      | Quem está do outro lado, e quais unidades pode ver.                   |
-| `src/lib/gate.functions.ts`     | Primeira execução, login, saída.                                      |
-| `src/lib/pastores.functions.ts` | Cadastro de pastores, senhas e permissões.                            |
-| `src/lib/parsers.ts`            | Leitura e normalização das planilhas, no navegador.                   |
-| `src/components/Upload.tsx`     | A tela do administrador: bases em cima, unidades embaixo.             |
-| `src/components/dashboard/`     | As quatro seções e o trilho que as troca.                             |
-| `ferramentas/`                  | Backup e a chave reserva de senha, para o TI.                         |
-| `testes/`                       | O teste do recorte.                                                   |
+| `src/lib/banco.server.ts`       | O único arquivo do app que fala SQL. `lerBase()` é a porta única de leitura. |
+| `src/lib/sessao.server.ts`      | Quem está do outro lado, e quais unidades pode ver em cada base.             |
+| `src/lib/bases.ts`              | O que cada base declara: colunas, assinatura, moeda, metas, regras.          |
+| `src/lib/presenca.ts`           | O que a carga tem, e todos os blocos que dependem de meta.                   |
+| `src/lib/gate.functions.ts`     | Primeira execução, login, saída.                                             |
+| `src/lib/pastores.functions.ts` | Cadastro de pastores, senhas e permissões.                                   |
+| `src/lib/parsers.ts`            | Leitura e normalização das planilhas, no navegador, por base.                |
+| `src/components/Upload.tsx`     | A tela do administrador: um bloco de envio por base, unidades embaixo.       |
+| `src/components/dashboard/`     | As seções e o trilho que as troca.                                           |
+| `ferramentas/`                  | Backup, impressão digital do banco e a chave reserva de senha, para o TI.    |
+| `testes/`                       | Os testes — ver a tabela acima.                                              |
 
 ## Banco de dados
 
@@ -194,4 +255,6 @@ Contas, senhas, permissões e as bases enviadas estão todas ali. **É a única
 pasta que precisa de backup**, e o jeito certo de fazê-lo está no
 [OPERACAO.md](OPERACAO.md) — copiar o arquivo com o sistema no ar não é seguro.
 
-As tabelas são criadas sozinhas na primeira partida.
+As tabelas são criadas sozinhas na primeira partida, e os bancos que já existem
+são migrados na partida — cada migração confere se já foi feita, e rodar de novo
+não muda nada.

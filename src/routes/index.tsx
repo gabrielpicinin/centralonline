@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { AppProvider, useApp } from "@/lib/appState";
 import { Login } from "@/components/Login";
 import { Upload } from "@/components/Upload";
+import { EscolhaDeBase } from "@/components/EscolhaDeBase";
 
 /*
  * O Dashboard entra sob demanda. Estático, ele arrastava o Recharts (~607 KB)
@@ -23,12 +24,19 @@ export const Route = createFileRoute("/")({
 });
 
 function Screen() {
-  const { step } = useApp();
+  const { step, base } = useApp();
   if (step === "login") return <Login />;
+  if (step === "escolha") return <EscolhaDeBase />;
   if (step === "upload") return <Upload />;
   return (
     <Suspense fallback={<TelaCarregando />}>
-      <Dashboard />
+      {/*
+       * Um dashboard por base, montado do zero na troca. Os filtros de uma base
+       * não fazem sentido na outra — as unidades são outras, os anos podem ser
+       * outros —, e a seção aberta no deck pode nem existir lá (Angola sem
+       * meta não tem a Seção 4). Remontar é o jeito de nada sobrar da anterior.
+       */}
+      <Dashboard key={base ?? "nenhuma"} />
     </Suspense>
   );
 }

@@ -1,7 +1,14 @@
+/*
+ * Com a extensão `.ts`: os testes carregam este arquivo direto no Node — ver o
+ * comentário em src/lib/consolidado.ts.
+ */
+import { DECLARACOES, type Base, type DeclaracaoBase } from "./bases.ts";
+import { temMetaDeDizimos } from "./presenca.ts";
+
 export type RawRow = Record<string, unknown>;
 
 export interface FinancialRow {
-  unidade: string; // Descrição CR. 1º Nível
+  unidade: string; // a coluna de unidade da base — ver bases.ts
   nat2: string; // Descrição Nat. 2º Nível
   nat3: string; // Descrição Nat. 3º Nível
   nat4: string; // Descrição Nat. 4º Nível
@@ -12,7 +19,7 @@ export interface FinancialRow {
   credito1: number; // Crédito
   debito: number; // Débito 2
   debito1: number; // Débito
-  data: Date | null; // Data
+  data: Date | null; // a coluna de data da base — ver bases.ts
   dia: number;
   mes: number; // Mês Baixa
   ano: number; // Ano Baixa
@@ -32,6 +39,33 @@ export interface FinancialParsed {
   metaAnualPorUnidade: Record<string, number>;
   /** Coluna "Meta Anual Total Geral": meta anual de todas as unidades juntas. */
   metaAnualTotalGeral: number;
+  /**
+   * Unidades da planilha sem coluna "Meta Anual <unidade>" de nome IDÊNTICO.
+   *
+   * É para o aviso da tela de envio, e não recusa nada: unidade sem meta é um
+   * caso legítimo. Mas onde a busca aproximada ainda está ligada (Brasil), uma
+   * unidade desta lista pode estar pegando a meta de outra de nome parecido; e
+   * onde o casamento é exato, fica com meta zero. Nos dois casos o número na
+   * tela parece verdade — então quem envia precisa saber.
+   *
+   * Vazia quando a planilha não tem meta nenhuma: aí não há o que avisar.
+   */
+  unidadesSemMetaExata: string[];
+}
+
+/**
+ * A planilha não serve para a base em que foi enviada.
+ *
+ * É lançada em vez de "ler do jeito que der": uma planilha errada lida sem
+ * reclamar vira um dashboard plausível e falso — ou, no pior caso, substitui a
+ * base inteira de um país pela do outro. A mensagem é escrita para quem envia,
+ * e aparece na tela de envio do jeito que está.
+ */
+export class PlanilhaRecusada extends Error {
+  constructor(mensagem: string) {
+    super(mensagem);
+    this.name = "PlanilhaRecusada";
+  }
 }
 
 const MES_MAP: Record<string, number> = {
@@ -90,6 +124,17 @@ function pickKey(row: RawRow, candidates: string[]): string | undefined {
     if (found) return found;
   }
   return undefined;
+}
+
+/*
+ * A coluna cujo cabeçalho é EXATAMENTE este nome — depois de tirar acento,
+ * maiúscula e espaço nas pontas, e nada além disso. Sem o "contém" do pickKey:
+ * ver em bases.ts por que as colunas que definem unidade e data não aceitam
+ * palpite.
+ */
+function colunaExata(row: RawRow, nome: string): string | undefined {
+  const alvo = norm(nome);
+  return Object.keys(row).find((k) => norm(k) === alvo);
 }
 
 function parseNumber(v: unknown): number {
@@ -188,15 +233,43 @@ export async function parseFile(file: File): Promise<RawRow[]> {
   return XLSX.utils.sheet_to_json<RawRow>(sheet, { defval: "", raw: true });
 }
 
-export function normalizeFinancial(rows: RawRow[]): FinancialParsed {
+/**
+ * Lê a planilha financeira de UMA base.
+ *
+ * A base declara de qual coluna sai a unidade e de qual sai a data, e o que a
+ * planilha precisa ter para ser aceita como dela (ver bases.ts). O parser não
+ * adivinha nada disso.
+ *
+ * Lança PlanilhaRecusada, com a mensagem pronta para a tela, quando falta
+ * coluna essencial ou quando a assinatura não bate — o arquivo de um país
+ * enviado no lugar do outro. Recusar aqui, no navegador, é recusar antes de
+ * qualquer linha sair para o servidor: a base que está lá fica intacta.
+ */
+export function normalizeFinancial(rows: RawRow[], base: Base): FinancialParsed {
+  const declaracao = DECLARACOES[base];
   if (!rows.length)
-    return { rows: [], metaPorUnidade: {}, metaAnualPorUnidade: {}, metaAnualTotalGeral: 0 };
+    return {
+      rows: [],
+      metaPorUnidade: {},
+      metaAnualPorUnidade: {},
+      metaAnualTotalGeral: 0,
+      unidadesSemMetaExata: [],
+    };
   const sample = rows[0];
-  const kUnidade = pickKey(sample, [
-    "Descrição CR. 1º Nível",
-    "Descricao CR 1 Nivel",
-    "CR 1 Nivel",
-  ]);
+
+  /*
+   * Por nome EXATO: as duas colunas que a base declara, e também dia, mês e
+   * ano. As de tempo entraram na lista por causa de Angola — na falta de "Ano
+   * Baixa", o "contém" do pickKey sairia procurando "ano" em qualquer
+   * cabeçalho, e um "Plano de Contas" tem "ano": o ano de todo lançamento
+   * viraria zero. O Brasil tem as quatro com o nome exato, então para ele nada
+   * muda.
+   */
+  const kUnidade = colunaExata(sample, declaracao.colunas.unidade);
+  const kData = colunaExata(sample, declaracao.colunas.data);
+  const kDia = colunaExata(sample, "Dia Baixa") ?? colunaExata(sample, "Dia");
+  const kMes = colunaExata(sample, "Mês Baixa");
+  const kAno = colunaExata(sample, "Ano Baixa") ?? colunaExata(sample, "Ano");
   const kNat2 = pickKey(sample, ["Descrição Nat. 2º Nível", "Descricao Nat 2 Nivel", "Nat 2"]);
   const kNat3 = pickKey(sample, ["Descrição Nat. 3º Nível", "Descricao Nat 3 Nivel", "Nat 3"]);
   const kNat4 = pickKey(sample, ["Descrição Nat. 4º Nível", "Descricao Nat 4 Nivel", "Nat 4"]);
@@ -219,10 +292,6 @@ export function normalizeFinancial(rows: RawRow[]): FinancialParsed {
   const kCredito1 =
     keys0.find((k) => /^credito$/.test(norm(k))) ??
     keys0.find((k) => norm(k).startsWith("credito") && k !== kCredito);
-  const kData = pickKey(sample, ["Data"]);
-  const kDia = pickKey(sample, ["Dia Baixa", "Dia"]);
-  const kMes = pickKey(sample, ["Mês Baixa", "Mes Baixa"]);
-  const kAno = pickKey(sample, ["Ano Baixa", "Ano"]);
   const kNro = pickKey(sample, ["Nro. Único Financeiro", "Nro Unico Financeiro", "Nro Unico"]);
 
   /*
@@ -287,11 +356,11 @@ export function normalizeFinancial(rows: RawRow[]): FinancialParsed {
     metaPorUnidade[nome] = anual / 12;
   }
 
-  const out: FinancialRow[] = rows
+  const lidas = rows
     .map((r) => {
       const d = kData ? parseDate(r[kData]) : null;
       const dia = d ? d.getDate() : kDia ? parseInt0(r[kDia]) : 0;
-      return {
+      const linha: FinancialRow = {
         unidade: kUnidade ? String(r[kUnidade] ?? "").trim() : "",
         nat2: kNat2 ? String(r[kNat2] ?? "").trim() : "",
         nat3: kNat3 ? String(r[kNat3] ?? "").trim() : "",
@@ -309,10 +378,113 @@ export function normalizeFinancial(rows: RawRow[]): FinancialParsed {
         ano: kAno ? parseInt0(r[kAno]) : d ? d.getFullYear() : 0,
         nroUnico: kNro ? String(r[kNro] ?? "").trim() : "",
       };
+      return { bruta: r, linha };
     })
-    .filter((r) => r.unidade || r.credito || r.debito);
+    .filter(({ linha }) => linha.unidade || linha.credito || linha.debito);
 
-  return { rows: out, metaPorUnidade, metaAnualPorUnidade, metaAnualTotalGeral };
+  conferirAssinatura(
+    declaracao,
+    colunaExata(sample, declaracao.assinatura.coluna),
+    lidas.map((l) => l.bruta),
+  );
+
+  /*
+   * Sem qualquer uma destas, o dashboard não fica errado de um jeito visível:
+   * fica zerado, ou com tudo num mês só, e parece verdade. A planilha é
+   * recusada, e a mensagem diz o que falta.
+   *
+   * Vem DEPOIS da assinatura, de propósito: o arquivo de Angola no lugar do
+   * Brasil também não tem a coluna "Data", e a mensagem certa para esse caso é
+   * "arquivo trocado", não "falta uma coluna".
+   */
+  const faltando: string[] = [];
+  if (!kUnidade) faltando.push(`"${declaracao.colunas.unidade}"`);
+  if (!kData && !(kMes && kAno)) faltando.push(`"${declaracao.colunas.data}"`);
+  if (!kCredito) faltando.push(`"Crédito 2"`);
+  if (!kDebito) faltando.push(`"Débito 2"`);
+  if (!kCredito1) faltando.push(`"Crédito"`);
+  if (!kDebito1) faltando.push(`"Débito"`);
+  if (faltando.length) {
+    throw new PlanilhaRecusada(
+      (faltando.length === 1
+        ? `Falta a coluna ${faltando[0]}`
+        : `Faltam as colunas ${faltando.join(", ")}`) +
+        ` na planilha financeira da base ${declaracao.nome}. Nada foi enviado. ` +
+        `Confira se é o arquivo certo e se o cabeçalho não foi alterado.`,
+    );
+  }
+  const out = lidas.map((l) => l.linha);
+
+  /*
+   * O aviso só existe quando a carga TEM meta de dízimos — pela mesma regra que
+   * liga os blocos de meta no dashboard (src/lib/presenca.ts). Sem meta nenhuma,
+   * que é o estado normal de Angola hoje, cada envio listaria todas as
+   * unidades: um aviso sobre algo que ninguém pode resolver, que vira ruído e
+   * ensina a ignorar o aviso no dia em que ele importar.
+   */
+  const temMeta = temMetaDeDizimos([...Object.values(metaAnualPorUnidade), metaAnualTotalGeral]);
+  const nomesComMeta = new Set(Object.keys(metaAnualPorUnidade).map(norm));
+  const unidadesSemMetaExata = !temMeta
+    ? []
+    : [...new Set(out.map((r) => r.unidade).filter(Boolean))]
+        .filter((u) => !nomesComMeta.has(norm(u)))
+        .sort((a, b) => a.localeCompare(b, "pt-BR"));
+
+  return {
+    rows: out,
+    metaPorUnidade,
+    metaAnualPorUnidade,
+    metaAnualTotalGeral,
+    unidadesSemMetaExata,
+  };
+}
+
+/*
+ * A conferência do arquivo trocado — ver `assinatura` em bases.ts.
+ *
+ * Olha só as linhas que seriam gravadas: uma linha em branco no fim do arquivo
+ * não diz nada sobre de onde ele veio. (O arquivo do Brasil tem cinco assim, com
+ * o 1º nível vazio e nenhum valor.)
+ */
+function conferirAssinatura(d: DeclaracaoBase, coluna: string | undefined, brutas: RawRow[]) {
+  const { valor, exige } = d.assinatura;
+  const alvo = norm(valor);
+  const temAMarca = (r: RawRow) => coluna !== undefined && norm(r[coluna]) === alvo;
+  const n = (x: number) => x.toLocaleString("pt-BR");
+  const desfecho =
+    "Nada foi enviado, e a base que está no servidor continua a mesma. " +
+    "Confira se os arquivos não foram trocados.";
+
+  if (exige === "nenhuma") {
+    const marcadas = brutas.filter(temAMarca).length;
+    if (marcadas) {
+      throw new PlanilhaRecusada(
+        `Este arquivo não pode entrar na base ${d.nome}: ${n(marcadas)} de ${n(brutas.length)} ` +
+          `lançamentos têm "${valor}" na coluna "${d.assinatura.coluna}", que é a marca da ` +
+          `planilha de outra base. ${desfecho}`,
+      );
+    }
+    return;
+  }
+
+  if (coluna === undefined) {
+    throw new PlanilhaRecusada(
+      `Este arquivo não pode entrar na base ${d.nome}: falta a coluna "${d.assinatura.coluna}", ` +
+        `que na planilha da base ${d.nome} diz "${valor}" em todas as linhas. ${desfecho}`,
+    );
+  }
+  const fora = brutas.filter((r) => !temAMarca(r));
+  if (fora.length) {
+    const exemplos = [...new Set(fora.map((r) => String(r[coluna] ?? "").trim() || "(vazio)"))]
+      .slice(0, 3)
+      .map((e) => `"${e}"`)
+      .join(", ");
+    throw new PlanilhaRecusada(
+      `Este arquivo não pode entrar na base ${d.nome}: ${n(fora.length)} de ${n(brutas.length)} ` +
+        `lançamentos não têm "${valor}" na coluna "${d.assinatura.coluna}" — por exemplo, ` +
+        `${exemplos}. ${desfecho}`,
+    );
+  }
 }
 
 /* ================= Saldo por Centro de Resultado ================= */
@@ -441,10 +613,16 @@ export function membershipForMonth(
  * vinha inflada. A continência só entra como último recurso, e apenas quando há
  * um único candidato: com dois ou mais não há como escolher sem chutar, e chutar
  * é justamente o que produzia o erro.
+ *
+ * E só nas bases que a permitem (`metaAproximada` em bases.ts). Em Angola ela
+ * é desligada: "Central Angola Sede" contém "Central Angola", e a Sede sem
+ * coluna de meta herdaria a meta do país inteiro. Lá, sem coluna exata, a meta
+ * é zero — e a unidade aparece no aviso do envio (ver unidadesSemMetaExata).
  */
 export function metaAnualDaUnidade(
   metaAnualPorUnidade: Record<string, number>,
   unidade: string,
+  base: Base,
 ): number {
   const alvo = norm(unidade);
   const entradas = Object.entries(metaAnualPorUnidade);
@@ -452,6 +630,7 @@ export function metaAnualDaUnidade(
   for (const [nome, v] of entradas) {
     if (norm(nome) === alvo) return v;
   }
+  if (!DECLARACOES[base].metaAproximada) return 0;
 
   const parciais = entradas.filter(([nome]) => {
     const n = norm(nome);

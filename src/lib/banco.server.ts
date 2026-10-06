@@ -15,6 +15,13 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { FinancialRow, MembershipRow, SaldoRow } from "./parsers";
+/*
+ * Com a extensão `.ts`: os testes carregam este arquivo direto no Node, que não
+ * resolve import sem extensão — e daqui sai um valor (BASES), não só um tipo.
+ * Ver o comentário em src/lib/consolidado.ts.
+ */
+import { BASES, type Base } from "./bases.ts";
+import { SEM_DADOS, temMetaDeDizimos, type Presenca } from "./presenca.ts";
 
 /*
  * Onde o arquivo mora. É esta pasta que precisa entrar na rotina de backup do
@@ -99,8 +106,21 @@ function conectar(): DatabaseSync {
    */
   conexao.exec("PRAGMA journal_mode = WAL");
   conexao.exec("PRAGMA foreign_keys = ON");
-  aplicarEsquema(conexao);
-  migrar(conexao);
+  try {
+    aplicarEsquema(conexao);
+    migrar(conexao);
+  } catch (e) {
+    /*
+     * Migração que falha não deixa o banco pela metade — cada uma desfaz o que
+     * começou (ver migrarParaDuasBases). Mas a conexão ficaria aberta e
+     * esquecida, uma por requisição, e o motivo se perderia no meio do erro
+     * genérico da requisição. Fecha, diz o motivo no log com o prefixo de
+     * sempre, e deixa o erro seguir: sem esquema certo, não há o que servir.
+     */
+    conexao.close();
+    console.error(`[banco] o esquema não pôde ser preparado; nada foi servido: ${e}`);
+    throw e;
+  }
   db = conexao;
   return conexao;
 }
@@ -114,7 +134,13 @@ function aplicarEsquema(c: DatabaseSync) {
       arquivos    TEXT,
       ativa       INTEGER NOT NULL DEFAULT 0,
       concluida   INTEGER NOT NULL DEFAULT 0,
-      linhas      INTEGER NOT NULL DEFAULT 0
+      linhas      INTEGER NOT NULL DEFAULT 0,
+      /*
+       * "brasil" ou "angola" — ver bases.ts. O padrão é o mesmo que a migração
+       * usa, para um banco novo e um migrado terem exatamente o mesmo esquema;
+       * quem grava carga sempre diz a base (ver iniciarCarga).
+       */
+      base        TEXT    NOT NULL DEFAULT 'brasil'
     );
 
     CREATE TABLE IF NOT EXISTS lancamentos (
@@ -158,9 +184,12 @@ function aplicarEsquema(c: DatabaseSync) {
     );
 
     /*
-     * O universo de unidades, alimentado por cada envio. É desta tabela que sai
-     * a lista de opções da tela de permissões — e não de uma relação escrita à
-     * mão —, então abrir ou fechar uma unidade se reflete sozinho lá.
+     * Histórico, e só. Era alimentada a cada envio, mas nunca foi lida: a lista
+     * de unidades sempre saiu dos lançamentos da carga ativa (ver
+     * listarUnidades). Com duas bases deixou de ser escrita — o nome é a chave,
+     * e uma "Central Sede" de cada país viraria uma linha só. Continua no
+     * esquema porque os bancos existentes a têm, e apagá-la seria mexer em
+     * produção sem ganho nenhum.
      */
     CREATE TABLE IF NOT EXISTS unidades (
       nome      TEXT PRIMARY KEY,
@@ -186,11 +215,17 @@ function aplicarEsquema(c: DatabaseSync) {
       senha_cifrada TEXT
     );
 
-    /* Quais unidades cada perfil enxerga. Sem linha aqui, não enxerga nenhuma. */
+    /*
+     * Quais unidades cada perfil enxerga, e em qual base. Sem linha aqui, não
+     * enxerga nenhuma; sem nenhuma linha numa base, não tem acesso a ela — ver
+     * basesDoPerfil. A base está na chave porque o mesmo nome de unidade pode
+     * existir nos dois países, e liberar um não pode liberar o outro.
+     */
     CREATE TABLE IF NOT EXISTS permissoes (
       perfil_id INTEGER NOT NULL REFERENCES perfis(id) ON DELETE CASCADE,
+      base      TEXT    NOT NULL,
       unidade   TEXT    NOT NULL,
-      PRIMARY KEY (perfil_id, unidade)
+      PRIMARY KEY (perfil_id, base, unidade)
     );
 
     CREATE INDEX IF NOT EXISTS ix_lanc_carga    ON lancamentos(carga_id);
@@ -255,6 +290,116 @@ function migrar(c: DatabaseSync) {
   if (!colunasPerfis.includes("senha_cifrada")) {
     c.exec("ALTER TABLE perfis ADD COLUMN senha_cifrada TEXT");
   }
+
+  migrarParaDuasBases(c, colunas);
+}
+
+/*
+ * DUAS BASES — Brasil e Angola.
+ *
+ * Tudo o que existia antes desta migração é Brasil: era a única base. Então as
+ * cargas e as permissões existentes ganham `base = 'brasil'`, e nada mais muda.
+ *
+ * O servidor da Central tem dados reais em produção quando isto roda pela
+ * primeira vez, e a regra é que nenhuma linha se perde. Daí três cuidados:
+ *
+ * 1. UMA TRANSAÇÃO SÓ. Ou a migração inteira se aplica, ou nada muda. Uma falha
+ *    no meio desfaz tudo, o motivo vai para o log, e nenhuma requisição é
+ *    atendida até alguém resolver — melhor do que um banco meio migrado, em que
+ *    metade do código acha que existe base e metade não. O caso previsível é
+ *    uma permissão apontando para um perfil que já não existe (só acontece se
+ *    alguém apagou perfil à mão, com o SQLite de linha de comando). A Central
+ *    preferiu que a migração pare nesse caso, em vez de decidir sozinha o que
+ *    fazer com a linha — e a mensagem diz qual perfil_id e o comando que
+ *    resolve. A impressão digital (ferramentas/impressao-digital.mjs) aponta o
+ *    mesmo caso no backup, antes da implantação.
+ *
+ * 2. `cargas` SÓ GANHA COLUNA. NUNCA É RECRIADA. Ela é a tabela-mãe de
+ *    lançamentos, membresia, saldos e metas, todas com ON DELETE CASCADE, e a
+ *    conexão liga `foreign_keys = ON` antes de migrar. Um DROP TABLE em cargas —
+ *    o caminho que o SQLite exige para mudar uma tabela além de acrescentar
+ *    coluna — faria um DELETE implícito em todas as cargas, e o CASCADE levaria
+ *    todos os lançamentos junto. Seria a perda total da base, sem erro nenhum.
+ *
+ * 3. `permissoes` É RECRIADA, porque a base entra na chave primária e o SQLite
+ *    não altera chave com ALTER TABLE. Isso é seguro porque ela é filha (de
+ *    perfis), não mãe: ninguém a referencia, e apagá-la não cascateia nada. A
+ *    contagem de linhas é conferida antes de a tabela antiga sair.
+ *
+ * A tabela `unidades` fica intocada. Ninguém lê dela — a lista de unidades sai
+ * dos lançamentos da carga ativa —, e recriá-la seria risco sem benefício.
+ *
+ * Idempotente: cada passo confere se já foi feito. Rodar de novo não faz nada.
+ */
+function migrarParaDuasBases(c: DatabaseSync, colunas: (tabela: string) => string[]) {
+  const faltaEmCargas = !colunas("cargas").includes("base");
+  const faltaEmPermissoes = !colunas("permissoes").includes("base");
+  if (!faltaEmCargas && !faltaEmPermissoes) return;
+
+  c.exec("BEGIN IMMEDIATE");
+  try {
+    if (faltaEmCargas) {
+      c.exec("ALTER TABLE cargas ADD COLUMN base TEXT NOT NULL DEFAULT 'brasil'");
+    }
+
+    if (faltaEmPermissoes) {
+      /*
+       * Conferido antes da cópia, e não deixado para ela: a cópia recusaria a
+       * linha com um "FOREIGN KEY constraint failed" que não diz qual é.
+       */
+      const orfas = c
+        .prepare(
+          `SELECT perfil_id AS id, COUNT(*) AS n FROM permissoes
+            WHERE perfil_id NOT IN (SELECT id FROM perfis)
+            GROUP BY perfil_id ORDER BY perfil_id`,
+        )
+        .all() as { id: number; n: number }[];
+      if (orfas.length) {
+        const ids = orfas.map((o) => o.id).join(", ");
+        const quais = orfas
+          .map((o) => `${o.id} (${o.n} ${o.n === 1 ? "permissão" : "permissões"})`)
+          .join(", ");
+        throw new Error(
+          `migração para duas bases parada, nada foi alterado: há permissões de perfis ` +
+            `que não existem mais — perfil_id ${quais}. Para seguir, apague-as e reinicie ` +
+            `o serviço: DELETE FROM permissoes WHERE perfil_id IN (${ids});`,
+        );
+      }
+
+      const antes = (c.prepare("SELECT COUNT(*) AS n FROM permissoes").get() as { n: number }).n;
+
+      // Sobra de uma tentativa anterior não chega a existir — DDL no SQLite é
+      // transacional —, mas se existir, não pode virar a tabela de verdade.
+      c.exec("DROP TABLE IF EXISTS permissoes_nova");
+      c.exec(`
+        CREATE TABLE permissoes_nova (
+          perfil_id INTEGER NOT NULL REFERENCES perfis(id) ON DELETE CASCADE,
+          base      TEXT    NOT NULL,
+          unidade   TEXT    NOT NULL,
+          PRIMARY KEY (perfil_id, base, unidade)
+        )
+      `);
+      c.exec(
+        "INSERT INTO permissoes_nova (perfil_id, base, unidade) SELECT perfil_id, 'brasil', unidade FROM permissoes",
+      );
+
+      const depois = (c.prepare("SELECT COUNT(*) AS n FROM permissoes_nova").get() as { n: number })
+        .n;
+      if (depois !== antes) {
+        throw new Error(
+          `migração de permissões perderia linhas: ${antes} antes, ${depois} depois — nada foi alterado`,
+        );
+      }
+
+      c.exec("DROP TABLE permissoes");
+      c.exec("ALTER TABLE permissoes_nova RENAME TO permissoes");
+    }
+
+    c.exec("COMMIT");
+  } catch (e) {
+    c.exec("ROLLBACK");
+    throw e;
+  }
 }
 
 /*
@@ -278,6 +423,7 @@ export const TOTAL_GERAL = "__total_geral__";
 
 export interface ResumoCarga {
   id: number;
+  base: Base;
   enviadaEm: string;
   enviadaPor: string | null;
   arquivos: string[];
@@ -286,12 +432,12 @@ export interface ResumoCarga {
 
 /* ============================ escrita ============================ */
 
-export function iniciarCarga(arquivos: string[], enviadaPor: string | null): number {
+export function iniciarCarga(base: Base, arquivos: string[], enviadaPor: string | null): number {
   const c = conectar();
   c.prepare(
-    `INSERT INTO cargas (enviada_em, enviada_por, arquivos, ativa, linhas)
-     VALUES (?, ?, ?, 0, 0)`,
-  ).run(new Date().toISOString(), enviadaPor, JSON.stringify(arquivos));
+    `INSERT INTO cargas (base, enviada_em, enviada_por, arquivos, ativa, linhas)
+     VALUES (?, ?, ?, ?, 0, 0)`,
+  ).run(base, new Date().toISOString(), enviadaPor, JSON.stringify(arquivos));
   const { id } = c.prepare("SELECT last_insert_rowid() AS id").get() as { id: number };
   return id;
 }
@@ -399,8 +545,16 @@ export function gravarMetas(
 }
 
 /**
- * Fecha a carga: conta as linhas, atualiza o universo de unidades, e só então
- * a promove a ativa.
+ * Fecha a carga: conta as linhas e só então a promove a ativa — DENTRO DA BASE
+ * DELA.
+ *
+ * Antes desativava TODAS as cargas antes de ativar a nova. Com uma base só,
+ * dava no mesmo; com duas, subir o Brasil derrubaria Angola, e o dashboard de
+ * lá ficaria vazio sem erro nenhum. A base vem da própria carga, e não de um
+ * parâmetro: assim não há como finalizar uma carga do Brasil "como Angola".
+ *
+ * Também deixou de escrever na tabela `unidades`, que ninguém lê — a lista de
+ * unidades sai dos lançamentos da carga ativa (ver listarUnidades).
  *
  * A troca no último passo é o que separa "o upload falhou" de "o dashboard da
  * rede caiu": enquanto a carga nova é gravada, todos continuam vendo a anterior
@@ -408,30 +562,31 @@ export function gravarMetas(
  */
 export function finalizarCarga(cargaId: number): ResumoCarga {
   const c = conectar();
+  const linha = c.prepare("SELECT base FROM cargas WHERE id = ?").get(cargaId) as
+    | { base: Base }
+    | undefined;
+  if (!linha) throw new Error(`carga ${cargaId} não existe`);
+  const base = linha.base;
+
   const { n } = c
     .prepare("SELECT COUNT(*) AS n FROM lancamentos WHERE carga_id = ?")
     .get(cargaId) as { n: number };
 
   c.exec("BEGIN");
   try {
-    c.prepare("UPDATE cargas SET ativa = 0").run();
+    c.prepare("UPDATE cargas SET ativa = 0 WHERE base = ?").run(base);
     c.prepare("UPDATE cargas SET ativa = 1, concluida = 1, linhas = ? WHERE id = ?").run(
       n,
       cargaId,
     );
-    c.prepare(
-      `INSERT INTO unidades (nome, vista_em)
-       SELECT DISTINCT unidade, ? FROM lancamentos WHERE carga_id = ? AND unidade <> ''
-       ON CONFLICT(nome) DO UPDATE SET vista_em = excluded.vista_em`,
-    ).run(new Date().toISOString(), cargaId);
     c.exec("COMMIT");
   } catch (e) {
     c.exec("ROLLBACK");
     throw e;
   }
 
-  podarCargasAntigas();
-  return cargaAtiva()!;
+  podarCargasAntigas(base);
+  return cargaAtiva(base)!;
 }
 
 /*
@@ -446,21 +601,28 @@ export function finalizarCarga(cargaId: number): ResumoCarga {
  *
  * Agora as vagas são das concluídas, e as inacabadas anteriores à ativa somem —
  * elas não servem para nada e só ocupam disco.
+ *
+ * TUDO ISSO DENTRO DE UMA BASE. Antes as duas vagas eram da rede inteira: subir
+ * o Brasil duas vezes apagaria a carga de Angola, e o ON DELETE CASCADE levaria
+ * junto os lançamentos, a membresia, os saldos e as metas dela. E o segundo
+ * DELETE, o das inacabadas, mataria no meio um envio de Angola em andamento.
+ * Destruição silenciosa nos dois casos — cada base agora poda só as próprias.
  */
-function podarCargasAntigas() {
+function podarCargasAntigas(base: Base) {
   const c = conectar();
   const concluidas = c
-    .prepare("SELECT id FROM cargas WHERE concluida = 1 ORDER BY id DESC LIMIT 2")
-    .all() as { id: number }[];
+    .prepare("SELECT id FROM cargas WHERE base = ? AND concluida = 1 ORDER BY id DESC LIMIT 2")
+    .all(base) as { id: number }[];
   if (!concluidas.length) return;
 
   const menorMantida = Math.min(...concluidas.map((r) => r.id));
-  c.prepare("DELETE FROM cargas WHERE id < ?").run(menorMantida);
+  c.prepare("DELETE FROM cargas WHERE base = ? AND id < ?").run(base, menorMantida);
   /*
    * Inacabadas entre as mantidas também saem — é o caso do envio que falhou
    * depois do último bom e antes deste.
    */
-  c.prepare("DELETE FROM cargas WHERE concluida = 0 AND id < ?").run(
+  c.prepare("DELETE FROM cargas WHERE base = ? AND concluida = 0 AND id < ?").run(
+    base,
     Math.max(...concluidas.map((r) => r.id)),
   );
 }
@@ -600,18 +762,47 @@ export function senhaCifradaDoPastor(perfilId: number): string | null {
   return r?.senha_cifrada == null ? null : txt(r.senha_cifrada);
 }
 
-/** As unidades liberadas para um perfil. Lista vazia significa nenhuma. */
-export function unidadesDoPerfil(perfilId: number): string[] {
+/**
+ * As unidades liberadas para um perfil, DENTRO DE UMA BASE. Lista vazia
+ * significa nenhuma — nunca todas.
+ *
+ * A base é obrigatória e entra na consulta, não num filtro depois. Sem ela, um
+ * pastor com "Central Sede" no Brasil, pedindo Angola, levaria a "Central Sede"
+ * de Angola junto: o recorte casa por nome, e nomes se repetem entre países.
+ */
+export function unidadesDoPerfil(perfilId: number, base: Base): string[] {
   const c = conectar();
   return (
     c
-      .prepare("SELECT unidade FROM permissoes WHERE perfil_id = ? ORDER BY unidade")
-      .all(perfilId) as { unidade: string }[]
+      .prepare("SELECT unidade FROM permissoes WHERE perfil_id = ? AND base = ? ORDER BY unidade")
+      .all(perfilId, base) as { unidade: string }[]
   ).map((r) => r.unidade);
 }
 
+/**
+ * As bases a que um perfil tem acesso.
+ *
+ * Não há tabela para isso, de propósito: ter acesso a uma base É ter pelo menos
+ * uma unidade liberada nela. Uma fonte de verdade só, sem o estado incoerente
+ * "tem a base mas nenhuma unidade" — que mostraria um dashboard vazio a quem
+ * nunca deveria tê-lo visto.
+ */
+export function basesDoPerfil(perfilId: number): Base[] {
+  const c = conectar();
+  const achadas = new Set(
+    (
+      c.prepare("SELECT DISTINCT base FROM permissoes WHERE perfil_id = ?").all(perfilId) as {
+        base: Base;
+      }[]
+    ).map((r) => r.base),
+  );
+  // Na ordem da declaração, para a tela de escolha não variar de uma vez para outra.
+  return BASES.filter((b) => achadas.has(b));
+}
+
 export interface PastorComUnidades extends Perfil {
-  unidades: string[];
+  /** As unidades liberadas, separadas por base. Uma base sem unidades é uma base sem acesso. */
+  unidadesPorBase: Record<Base, string[]>;
   /** ISO do último login, ou nulo se nunca entrou. */
   ultimoAcesso: string | null;
   /**
@@ -639,14 +830,17 @@ export function listarPastores(): PastorComUnidades[] {
     )
     .all() as LinhaSQL[];
 
-  const porPerfil = new Map<number, string[]>();
-  for (const r of c.prepare("SELECT perfil_id, unidade FROM permissoes ORDER BY unidade").all() as {
-    perfil_id: number;
-    unidade: string;
-  }[]) {
-    const lista = porPerfil.get(r.perfil_id);
-    if (lista) lista.push(r.unidade);
-    else porPerfil.set(r.perfil_id, [r.unidade]);
+  const porPerfil = new Map<number, Record<Base, string[]>>();
+  const linhasPermissao = c
+    .prepare("SELECT perfil_id, base, unidade FROM permissoes ORDER BY unidade")
+    .all() as { perfil_id: number; base: Base; unidade: string }[];
+  for (const r of linhasPermissao) {
+    let doPerfil = porPerfil.get(r.perfil_id);
+    if (!doPerfil) {
+      doPerfil = { brasil: [], angola: [] };
+      porPerfil.set(r.perfil_id, doPerfil);
+    }
+    doPerfil[r.base].push(r.unidade);
   }
 
   return perfis.map((r) => ({
@@ -655,7 +849,7 @@ export function listarPastores(): PastorComUnidades[] {
     nome: txt(r.nome),
     papel: txt(r.papel) as "admin" | "pastor",
     ativo: !!r.ativo,
-    unidades: porPerfil.get(num(r.id)) ?? [],
+    unidadesPorBase: porPerfil.get(num(r.id)) ?? { brasil: [], angola: [] },
     ultimoAcesso: r.ultimo_acesso == null ? null : txt(r.ultimo_acesso),
     temSenhaVisivel: !!r.tem_senha_visivel,
   }));
@@ -671,16 +865,24 @@ export function listarPastores(): PastorComUnidades[] {
  * Para cada pastor, apaga e regrava em vez de calcular a diferença. São no
  * máximo 18 linhas por pessoa; a diferença de custo é nula e o código que a
  * calcularia é onde moram os erros.
+ *
+ * Mas apaga e regrava SÓ A BASE da alteração. Cada alteração diz a base, e só
+ * as permissões daquela base são tocadas. Antes era `DELETE FROM permissoes
+ * WHERE perfil_id = ?`: com duas bases, salvar as unidades do Brasil de alguém
+ * apagaria as de Angola dele — perda silenciosa, descoberta só quando o pastor
+ * dissesse que não vê mais nada.
  */
-export function salvarPermissoes(alteracoes: { perfilId: number; unidades: string[] }[]) {
+export function salvarPermissoes(
+  alteracoes: { perfilId: number; base: Base; unidades: string[] }[],
+) {
   const c = conectar();
-  const apagar = c.prepare("DELETE FROM permissoes WHERE perfil_id = ?");
-  const inserir = c.prepare("INSERT INTO permissoes (perfil_id, unidade) VALUES (?, ?)");
+  const apagar = c.prepare("DELETE FROM permissoes WHERE perfil_id = ? AND base = ?");
+  const inserir = c.prepare("INSERT INTO permissoes (perfil_id, base, unidade) VALUES (?, ?, ?)");
   c.exec("BEGIN");
   try {
     for (const a of alteracoes) {
-      apagar.run(a.perfilId);
-      for (const u of a.unidades) inserir.run(a.perfilId, u);
+      apagar.run(a.perfilId, a.base);
+      for (const u of a.unidades) inserir.run(a.perfilId, a.base, u);
     }
     c.exec("COMMIT");
   } catch (e) {
@@ -714,11 +916,22 @@ export function usuarioExiste(usuario: string): boolean {
 
 /* ============================ leitura ============================ */
 
-export function cargaAtiva(): ResumoCarga | null {
+/*
+ * A carga ativa DE UMA BASE.
+ *
+ * Era `SELECT * FROM cargas WHERE ativa = 1` com `.get()`, que devolve a
+ * primeira linha que achar. Com uma base só, havia uma ativa e dava certo; com
+ * duas, uma das bases desapareceria de todo lugar que pergunta pela carga
+ * ativa — a lista de unidades da tela de permissões, o aviso de base carregada,
+ * e a própria lerBase. Era a causa real do que parecia ser um problema da
+ * tabela `unidades`.
+ */
+export function cargaAtiva(base: Base): ResumoCarga | null {
   const c = conectar();
-  const r = c.prepare("SELECT * FROM cargas WHERE ativa = 1").get() as
+  const r = c.prepare("SELECT * FROM cargas WHERE ativa = 1 AND base = ?").get(base) as
     | {
         id: number;
+        base: Base;
         enviada_em: string;
         enviada_por: string | null;
         arquivos: string | null;
@@ -728,6 +941,7 @@ export function cargaAtiva(): ResumoCarga | null {
   if (!r) return null;
   return {
     id: r.id,
+    base: r.base,
     enviadaEm: r.enviada_em,
     enviadaPor: r.enviada_por,
     arquivos: r.arquivos ? JSON.parse(r.arquivos) : [],
@@ -741,15 +955,15 @@ export function cargaAtiva(): ResumoCarga | null {
  * Não é a tabela `unidades`, que acumula tudo o que já passou por aqui. A
  * diferença aparece quando uma igreja fecha: o nome dela continua no histórico,
  * mas oferecê-lo na tela de permissões faria o administrador marcar uma unidade
- * que não existe mais, e o pastar abriria um dashboard vazio sem ninguém
+ * que não existe mais, e o pastor abriria um dashboard vazio sem ninguém
  * conseguir explicar por quê.
  *
- * A tabela `unidades` continua existindo para o histórico e para reconhecer
- * permissões que ficaram apontando para o vazio — ver `permissoesOrfas`.
+ * Uma base sem carga ativa — Angola antes do primeiro envio — não tem unidade
+ * nenhuma, e a lista vem vazia.
  */
-export function listarUnidades(): string[] {
+export function listarUnidades(base: Base): string[] {
   const c = conectar();
-  const carga = cargaAtiva();
+  const carga = cargaAtiva(base);
   if (!carga) return [];
   return (
     c
@@ -766,18 +980,25 @@ export function listarUnidades(): string[] {
  * Um pastor nesta lista abre o dashboard e não vê nada — e essa é a pergunta de
  * suporte mais provável do sistema. Mostrá-la na tela transforma um mistério
  * numa linha de texto.
+ *
+ * Conferido base a base: uma permissão de Angola é órfã se a unidade sumiu da
+ * carga ativa de ANGOLA. Comparar com a lista de outra base daria falso
+ * positivo — ou pior, esconderia uma órfã atrás de uma unidade de mesmo nome do
+ * outro país.
  */
-export function permissoesOrfas(): { perfilId: number; unidade: string }[] {
+export function permissoesOrfas(): { perfilId: number; base: Base; unidade: string }[] {
   const c = conectar();
-  const vivas = new Set(listarUnidades());
-  return (
-    c.prepare("SELECT perfil_id, unidade FROM permissoes").all() as {
-      perfil_id: number;
-      unidade: string;
-    }[]
-  )
-    .filter((r) => !vivas.has(r.unidade))
-    .map((r) => ({ perfilId: r.perfil_id, unidade: r.unidade }));
+  const orfas: { perfilId: number; base: Base; unidade: string }[] = [];
+  for (const base of BASES) {
+    const vivas = new Set(listarUnidades(base));
+    const linhas = c
+      .prepare("SELECT perfil_id, unidade FROM permissoes WHERE base = ?")
+      .all(base) as { perfil_id: number; unidade: string }[];
+    for (const r of linhas) {
+      if (!vivas.has(r.unidade)) orfas.push({ perfilId: r.perfil_id, base, unidade: r.unidade });
+    }
+  }
+  return orfas;
 }
 
 export interface BaseCompleta {
@@ -787,6 +1008,8 @@ export interface BaseCompleta {
   metaAnualPorUnidade: Record<string, number>;
   metaAnualTotalGeral: number;
   carga: ResumoCarga | null;
+  /** O que a carga tem — ver src/lib/presenca.ts. Decide quais blocos existem. */
+  presenca: Presenca;
 }
 
 const VAZIA: BaseCompleta = {
@@ -796,6 +1019,7 @@ const VAZIA: BaseCompleta = {
   metaAnualPorUnidade: {},
   metaAnualTotalGeral: 0,
   carga: null,
+  presenca: SEM_DADOS,
 };
 
 /**
@@ -808,13 +1032,29 @@ const VAZIA: BaseCompleta = {
  * servidor: o navegador do pastor nunca chega a receber uma linha das outras
  * unidades, então esconder na tela nunca fez parte do desenho.
  */
-export function lerBase(unidades: string[] | null): BaseCompleta {
+export function lerBase(base: Base, unidades: string[] | null): BaseCompleta {
   const c = conectar();
-  const carga = cargaAtiva();
+  /*
+   * A base escolhe a carga, e tudo o mais — lançamentos, membresia, saldos,
+   * metas — é lido por `carga_id`. É assim que a base chega a todas as
+   * tabelas sem coluna nova em nenhuma delas: elas herdam pela carga.
+   *
+   * `unidades` precisa ter sido lida DENTRO desta mesma base (ver
+   * unidadesDoPerfil). Esta função confia nisso, e é a única que confia: é a
+   * porta única de leitura, e a regra de quem vê o quê vive em quem a chama.
+   */
+  const carga = cargaAtiva(base);
   if (!carga) return VAZIA;
 
-  // Sem nenhuma unidade permitida o recorte é vazio, e não "tudo".
-  if (unidades && unidades.length === 0) return { ...VAZIA, carga };
+  /*
+   * Sem nenhuma unidade permitida o recorte é vazio, e não "tudo" — e vazio
+   * por inteiro, sem a `carga` junto. Antes ela ia: a data do envio, quem
+   * enviou, os nomes dos arquivos e o total de linhas da base. Com uma base só
+   * era inofensivo; com duas, um pastor só do Brasil que pedisse Angola direto
+   * ao servidor receberia a prova de que Angola existe, e o tamanho dela. A
+   * tela não usa esse campo, então nada muda para quem pede a própria base.
+   */
+  if (unidades && unidades.length === 0) return VAZIA;
 
   const filtro = unidades ? ` AND unidade IN (${unidades.map(() => "?").join(",")})` : "";
   const args = unidades ? [carga.id, ...unidades] : [carga.id];
@@ -902,5 +1142,39 @@ export function lerBase(unidades: string[] | null): BaseCompleta {
     metaAnualTotalGeral = Object.values(metaAnualPorUnidade).reduce((s, v) => s + v, 0);
   }
 
-  return { financial, membership, saldo, metaAnualPorUnidade, metaAnualTotalGeral, carga };
+  return {
+    financial,
+    membership,
+    saldo,
+    metaAnualPorUnidade,
+    metaAnualTotalGeral,
+    carga,
+    presenca: presencaDaCarga(c, carga.id),
+  };
+}
+
+/*
+ * O que a carga tem, lido da carga INTEIRA — sem o filtro de unidades acima.
+ *
+ * É de propósito: a presença responde "esta base tem meta?", e não "estas
+ * unidades têm meta?". Um pastor cuja unidade não tem coluna de meta continua
+ * vendo o card de meta, exatamente como sempre viu. O que ele recebe é um sim
+ * ou não sobre a base dele — nenhum número de outra unidade.
+ *
+ * As regras são as de src/lib/presenca.ts. A do (A) roda lá, sobre as metas da
+ * carga — poucas linhas, uma por unidade. A do (B) roda aqui, em SQL, porque
+ * precisaria trazer todos os lançamentos para olhar uma coluna; ela para no
+ * primeiro preenchido.
+ */
+function presencaDaCarga(c: DatabaseSync, cargaId: number): Presenca {
+  const metas = c.prepare("SELECT anual FROM metas WHERE carga_id = ?").all(cargaId) as {
+    anual: number;
+  }[];
+  return {
+    metaDeDizimos: temMetaDeDizimos(metas.map((m) => m.anual)),
+    metasDeAplicacao: !!c
+      .prepare("SELECT 1 FROM lancamentos WHERE carga_id = ? AND TRIM(meta) <> '' LIMIT 1")
+      .get(cargaId),
+    membresia: !!c.prepare("SELECT 1 FROM membresia WHERE carga_id = ? LIMIT 1").get(cargaId),
+  };
 }

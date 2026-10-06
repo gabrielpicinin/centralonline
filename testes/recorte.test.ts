@@ -38,7 +38,7 @@ const NOME_HOSTIL = "Central'; DROP TABLE lancamentos; --";
 before(async () => {
   banco = await import("../src/lib/banco.server.ts");
 
-  const cargaId = banco.iniciarCarga(["teste.csv"], "Financeiro");
+  const cargaId = banco.iniciarCarga("brasil", ["teste.csv"], "Financeiro");
   const linhas = [...UNIDADES, NOME_HOSTIL].flatMap((unidade) =>
     Array.from({ length: 10 }, (_, i) => ({
       unidade,
@@ -99,14 +99,14 @@ function unidadesNoResultado(base: Awaited<ReturnType<Banco["lerBase"]>>): strin
 }
 
 test("administrador enxerga todas as unidades", () => {
-  const base = banco.lerBase(null);
+  const base = banco.lerBase("brasil", null);
   assert.equal(base.financial.length, 40);
   assert.ok(unidadesNoResultado(base).includes("Central Sede"));
   assert.equal(base.metaAnualTotalGeral, 60, "o consolidado da planilha chega a quem vê tudo");
 });
 
 test("pastor recebe APENAS as unidades dele, em todas as tabelas", () => {
-  const base = banco.lerBase(["Central Picos"]);
+  const base = banco.lerBase("brasil", ["Central Picos"]);
   assert.deepEqual(
     unidadesNoResultado(base),
     ["Central Picos"],
@@ -120,17 +120,17 @@ test("a linha consolidada de membresia não chega ao pastor", () => {
    * Ela vale a rede inteira. Se chegasse, o dízimo per capita do pastor teria
    * o numerador de uma igreja sobre o denominador de todas.
    */
-  const base = banco.lerBase(["Central Picos"]);
+  const base = banco.lerBase("brasil", ["Central Picos"]);
   assert.ok(!base.membership.some((r) => r.unidade === "Total Geral"));
 });
 
 test("a meta do pastor é a soma das unidades dele, não a da rede", () => {
-  assert.equal(banco.lerBase(["Central Picos"]).metaAnualTotalGeral, 20);
-  assert.equal(banco.lerBase(["Central Picos", "Central Norte"]).metaAnualTotalGeral, 30);
+  assert.equal(banco.lerBase("brasil", ["Central Picos"]).metaAnualTotalGeral, 20);
+  assert.equal(banco.lerBase("brasil", ["Central Picos", "Central Norte"]).metaAnualTotalGeral, 30);
 });
 
 test("pastor sem nenhuma unidade não vê nada — lista vazia é nada, não tudo", () => {
-  const base = banco.lerBase([]);
+  const base = banco.lerBase("brasil", []);
   assert.equal(base.financial.length, 0);
   assert.equal(base.membership.length, 0);
   assert.equal(base.saldo.length, 0);
@@ -138,14 +138,14 @@ test("pastor sem nenhuma unidade não vê nada — lista vazia é nada, não tud
 });
 
 test("nome de unidade hostil não escapa do filtro nem derruba a tabela", () => {
-  const base = banco.lerBase([NOME_HOSTIL]);
+  const base = banco.lerBase("brasil", [NOME_HOSTIL]);
   assert.deepEqual(unidadesNoResultado(base), [NOME_HOSTIL]);
   // A tabela continua de pé: o nome entrou como valor, nunca como SQL.
-  assert.equal(banco.lerBase(null).financial.length, 40);
+  assert.equal(banco.lerBase("brasil", null).financial.length, 40);
 });
 
 test("pedir uma unidade que não existe devolve vazio, e não tudo", () => {
-  assert.equal(banco.lerBase(["Central Inexistente"]).financial.length, 0);
+  assert.equal(banco.lerBase("brasil", ["Central Inexistente"]).financial.length, 0);
 });
 
 /*
@@ -174,6 +174,7 @@ test("nome acentuado de arquivo do Excel BR sobrevive até o recorte", async () 
     "Crédito",
     "Crédito 2",
     "Débito",
+    "Débito 2",
     "Dia Baixa",
     "Mês Baixa",
     "Ano Baixa",
@@ -192,6 +193,7 @@ test("nome acentuado de arquivo do Excel BR sobrevive até o recorte", async () 
       "",
       "1000",
       "1000",
+      "0",
       "0",
       "1",
       "1",
@@ -220,19 +222,19 @@ test("nome acentuado de arquivo do Excel BR sobrevive até o recorte", async () 
   );
   assert.ok(bytes.includes(0xe7), "o arquivo de teste precisa mesmo estar em cp1252");
 
-  const lidas = normalizeFinancial(await parseFile(new File([bytes], "FINANCEIRO.csv")));
+  const lidas = normalizeFinancial(await parseFile(new File([bytes], "FINANCEIRO.csv")), "brasil");
   assert.equal(lidas.rows[0]?.unidade, ACENTUADA, "o acento tem de sobreviver à leitura");
 
-  const carga = banco.iniciarCarga(["FINANCEIRO.csv"], "Financeiro");
+  const carga = banco.iniciarCarga("brasil", ["FINANCEIRO.csv"], "Financeiro");
   banco.gravarLancamentos(carga, lidas.rows);
   banco.finalizarCarga(carga);
 
   assert.ok(
-    banco.listarUnidades().includes(ACENTUADA),
+    banco.listarUnidades("brasil").includes(ACENTUADA),
     "o acento tem de sobreviver à ida e volta pelo banco",
   );
   assert.equal(
-    banco.lerBase([ACENTUADA]).financial.length,
+    banco.lerBase("brasil", [ACENTUADA]).financial.length,
     1,
     "e o recorte tem de casar com o nome acentuado",
   );

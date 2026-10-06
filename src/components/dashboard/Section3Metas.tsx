@@ -12,9 +12,9 @@ import {
   Legend,
 } from "recharts";
 import { motion } from "framer-motion";
-import { fmtBRL } from "@/lib/format";
 import { norm, type FinancialRow } from "@/lib/parsers";
 import { metaUsaDebito2 } from "@/lib/consolidado";
+import { useBaseAtiva } from "@/lib/baseAtiva";
 import { useAnimarGraficos } from "./secaoAtiva";
 
 interface Props {
@@ -40,55 +40,11 @@ interface Props {
 }
 
 /*
- * Naturezas que viram uma coluna só no eixo. Separadas, são fatias pequenas que
- * poluem o gráfico sem dizer muito; juntas, cabem numa barra. A repartição
- * continua à mão no tooltip da coluna e na coluna "Identificação" do painel de
- * maiores despesas.
+ * As metas percentuais e os grupos de naturezas moram em src/lib/bases.ts,
+ * declarados por base: hoje são os mesmos no Brasil e em Angola, mas podem
+ * divergir sem mexer neste componente. Aqui só se lê a declaração da base
+ * aberta (ver useBaseAtiva).
  */
-interface Grupo {
-  /** Rótulo no eixo. Pode repetir o nome de uma das partes, como "Custeio". */
-  nome: string;
-  partes: string[];
-  /**
-   * Meta do grupo. Sem valor aqui, é a soma das metas das partes — que é o certo
-   * quando a fusão não muda o alvo (Custeio já valia 12% e Outras Despesas, 0%).
-   * Investimentos precisa do valor explícito: as três partes valiam 0% cada,
-   * mas o grupo responde por 7%.
-   */
-  metaPropria?: number;
-}
-
-const GRUPOS: Grupo[] = [
-  {
-    nome: "Investimentos em Ativos",
-    partes: ["Investimentos Central", "Ativos Imobilizados", "Investimento em Terceiros"],
-    metaPropria: 7,
-  },
-  {
-    nome: "Custeio",
-    partes: ["Custeio", "Outras Despesas"],
-  },
-];
-
-const grupoChamado = (nome: string) => GRUPOS.find((g) => norm(g.nome) === norm(nome));
-
-/** Naturezas absorvidas por algum grupo — saem do eixo como colunas próprias. */
-const PARTES_AGRUPADAS = new Set(GRUPOS.flatMap((g) => g.partes).map(norm));
-
-const META_TARGETS: { name: string; target: number }[] = [
-  { name: "Pastores e Obreiros", target: 17 },
-  { name: "Central Missionária", target: 16 },
-  { name: "Pessoal", target: 13 },
-  { name: "Custeio", target: 12 },
-  { name: "Assistência Social", target: 10 },
-  { name: "Ativos Imobilizados", target: 0 },
-  { name: "Células", target: 4 },
-  { name: "Ministérios", target: 4 },
-  { name: "Investimento em Terceiros", target: 0 },
-  { name: "Investimentos Central", target: 0 },
-  { name: "Outras Despesas", target: 0 },
-  { name: "Outras Empresas", target: 0 },
-];
 
 /*
  * Colunas que ganham a aba "Relação entre Dízimos e Ofertas" no tooltip.
@@ -152,6 +108,18 @@ const MultiLineTick = (props: any) => {
 };
 
 export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: Props) {
+  const { base, declaracao, moeda } = useBaseAtiva();
+  const { alvos, grupos } = declaracao.metasDeAplicacao;
+  /** Naturezas absorvidas por algum grupo — saem do eixo como colunas próprias. */
+  const partesAgrupadas = useMemo(
+    () => new Set(grupos.flatMap((g) => g.partes).map(norm)),
+    [grupos],
+  );
+  const grupoChamado = useCallback(
+    (nome: string) => grupos.find((g) => norm(g.nome) === norm(nome)),
+    [grupos],
+  );
+
   /*
    * A coluna que o Realizado lê, num ponto só — e ela depende da META de cada
    * lançamento: na visão consolidada, as metas de METAS_EM_DEBITO_2 leem
@@ -163,8 +131,8 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
    * diferente da própria barra.
    */
   const valorDe = useCallback(
-    (r: FinancialRow) => (visaoConsolidada && metaUsaDebito2(r.meta) ? r.debito : r.debito1),
-    [visaoConsolidada],
+    (r: FinancialRow) => (visaoConsolidada && metaUsaDebito2(r.meta, base) ? r.debito : r.debito1),
+    [visaoConsolidada, base],
   );
 
   // Unidade e mês já vieram aplicados do cabeçalho; resta o recorte da seção.
@@ -194,12 +162,12 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
   const data = useMemo(() => {
     // Cópia: as metas fixas entram só nesta conta, sem sujar o Map memoizado.
     const nomes = new Map(displayName);
-    for (const t of META_TARGETS) {
-      const k = norm(t.name);
-      if (!nomes.has(k)) nomes.set(k, t.name);
+    for (const t of alvos) {
+      const k = norm(t.nome);
+      if (!nomes.has(k)) nomes.set(k, t.nome);
     }
 
-    const targetMap = new Map(META_TARGETS.map((t) => [norm(t.name), t.target]));
+    const targetMap = new Map(alvos.map((t) => [norm(t.nome), t.alvo]));
 
     const todas = Array.from(nomes.entries()).map(([k, name]) => {
       const realizadoAbs = sumByMeta.get(k) ?? 0;
@@ -209,10 +177,10 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
     });
 
     // As naturezas absorvidas somem do eixo; cada grupo entra no lugar delas.
-    const rows = todas.filter((r) => !PARTES_AGRUPADAS.has(norm(r.name)));
+    const rows = todas.filter((r) => !partesAgrupadas.has(norm(r.name)));
     const composicaoPorGrupo = new Map<string, ParteDoGrupo[]>();
 
-    for (const g of GRUPOS) {
+    for (const g of grupos) {
       const partes = todas.filter((r) => g.partes.some((p) => norm(p) === norm(r.name)));
       if (!partes.length) continue;
 
@@ -249,13 +217,13 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
     });
 
     return { rows, composicaoPorGrupo };
-  }, [displayName, sumByMeta, totalDebito]);
+  }, [displayName, sumByMeta, totalDebito, alvos, grupos, partesAgrupadas]);
 
   const { rows: dataRows, composicaoPorGrupo } = data;
 
   /*
    * Soma das metas que o gráfico realmente desenha — inclui os 7% do grupo de
-   * investimentos, que não existem em META_TARGETS (lá as três naturezas valem
+   * investimentos, que não existem nos alvos (lá as três naturezas valem
    * 0% cada). Ler de dataRows mantém o rodapé em dia com as barras.
    */
   /*
@@ -464,7 +432,7 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
     // Quem procurar as linhas dele precisa procurar por todas as partes.
     const g = grupoChamado(hoverMeta);
     return new Set((g ? g.partes : [hoverMeta]).map(norm));
-  }, [hoverMeta]);
+  }, [hoverMeta, grupoChamado]);
 
   /* Nome da natureza (normalizado) -> cor, a mesma do mini gráfico do tooltip. */
   const corPorParte = useMemo(
@@ -648,7 +616,7 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
               <div className="flex items-center justify-between px-4 py-2.5 bg-th text-ink border-b border-line-strong">
                 <p className="font-semibold truncate">Maiores despesas {hoverMeta}</p>
                 <p className="text-orange-300 font-semibold whitespace-nowrap ml-3">
-                  Despesa total = {fmtBRL(rankingTotal)}
+                  Despesa total = {moeda.formatar(rankingTotal)}
                 </p>
               </div>
 
@@ -667,7 +635,9 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
                         style={{ background: corPorParte.get(norm(nome)) ?? ORANGE }}
                       />
                       <span className="text-ink-2">{nome}</span>
-                      <span className="font-medium tabular-nums text-ink">{fmtBRL(soma)}</span>
+                      <span className="font-medium tabular-nums text-ink">
+                        {moeda.formatar(soma)}
+                      </span>
                     </span>
                   ))}
                 </div>
@@ -713,7 +683,7 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
                         <td className="px-3 py-1.5 text-ink-2">{t.nat4}</td>
                         <td className="px-3 py-1.5 text-ink-2">{t.projeto}</td>
                         <td className="px-3 py-1.5 text-right tabular-nums text-ink font-medium">
-                          {fmtBRL(t.soma)}
+                          {moeda.formatar(t.soma)}
                         </td>
                       </tr>
                     ))}

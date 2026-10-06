@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { LogOut, Calendar, FilterX, SlidersHorizontal, FolderOpen } from "lucide-react";
+import { LogOut, Calendar, FilterX, SlidersHorizontal, FolderOpen, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -11,6 +11,9 @@ import {
 import { useApp } from "@/lib/appState";
 import { isDizimosOfertas, norm } from "@/lib/parsers";
 import { MESES } from "@/lib/format";
+import { DECLARACOES } from "@/lib/bases";
+import { BaseAtivaContexto, baseAtivaDe } from "@/lib/baseAtiva";
+import { desenha } from "@/lib/presenca";
 import { LogoCentral } from "./LogoCentral";
 import { MultiSelect } from "./dashboard/MultiSelect";
 import { Section1Total } from "./dashboard/Section1Total";
@@ -19,6 +22,53 @@ import { Section3Metas } from "./dashboard/Section3Metas";
 import { EntradasDiarias } from "./dashboard/EntradasDiarias";
 import { SectionDeck, type SecaoDef } from "./dashboard/SectionDeck";
 
+/*
+ * O alternador de base, no canto superior direito.
+ *
+ * Só existe para quem abre mais de uma — o administrador e o pastor com as
+ * duas. O pastor de uma base só não vê alternador nenhum: para ele, a outra
+ * base não existe.
+ *
+ * O destaque fica na base que está NA TELA, e não na que foi pedida: enquanto
+ * a outra carrega, o que se vê ainda é a anterior, e o botão pedido mostra que
+ * está a caminho. A troca acontece de uma vez quando os dados chegam — e, se
+ * dois cliques se cruzarem, vale o último (ver abrirBase em appState.tsx).
+ */
+function AlternadorDeBase() {
+  const { bases, base, abrindo, abrirBase } = useApp();
+  const [falhou, setFalhou] = useState(false);
+  if (bases.length < 2) return null;
+  return (
+    <div className="flex items-center gap-2">
+      {falhou && <span className="text-xs text-neg">Não consegui trocar</span>}
+      <div
+        role="group"
+        aria-label="Base"
+        className="flex items-center rounded-lg border border-line-strong bg-panel-2 p-0.5 shadow-panel"
+      >
+        {bases.map((b) => (
+          <button
+            key={b}
+            type="button"
+            aria-pressed={b === base}
+            onClick={() => {
+              if (b === base && abrindo === null) return;
+              setFalhou(false);
+              void abrirBase(b).catch(() => setFalhou(true));
+            }}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              b === base ? "bg-acc text-background" : "text-ink-2 hover:text-ink"
+            }`}
+          >
+            {abrindo === b && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {DECLARACOES[b].nome}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
   const {
     financial,
@@ -26,6 +76,8 @@ export function Dashboard() {
     saldo,
     metaAnualPorUnidade,
     metaAnualTotalGeral,
+    presenca,
+    base,
     user,
     papel,
     setStep,
@@ -295,6 +347,13 @@ export function Dashboard() {
     setMetaSel([]);
   };
 
+  /*
+   * As seções que existem NESTA carga. A Seção 4 é inteira das metas de
+   * aplicação: sem nenhuma na planilha, ela não existe — nem no palco, nem na
+   * navegação lateral. A decisão vem pronta do servidor (ver
+   * src/lib/presenca.ts); aqui só se obedece a ela, e as seções recebem a
+   * mesma `presenca` para os blocos de meta que moram dentro delas.
+   */
   const secoes: SecaoDef[] = useMemo(
     () => [
       {
@@ -305,6 +364,7 @@ export function Dashboard() {
           <Section1Total
             rotuloTodasUnidades={rotuloTodasUnidades}
             visaoConsolidada={visaoConsolidada}
+            presenca={presenca}
             financial={dados}
             membership={membership}
             metaAnualPorUnidade={metaAnualPorUnidade}
@@ -323,6 +383,7 @@ export function Dashboard() {
         conteudo: (
           <EntradasDiarias
             rotuloTodasUnidades={rotuloTodasUnidades}
+            presenca={presenca}
             financial={dados}
             financialBruto={financial}
             financialTodosMeses={dadosTodosMeses}
@@ -342,22 +403,26 @@ export function Dashboard() {
         titulo: "Análise de Despesas",
         conteudo: <Section2Despesas financial={dados} />,
       },
-      {
-        id: "metas",
-        numero: 4,
-        titulo: "Controle de Metas",
-        conteudo: (
-          // O card de metas é o próprio conteúdo da seção; a moldura com padding
-          // fica aqui para ele não encostar nas bordas do quadro de design.
-          <div className="flex h-full w-full min-h-0 flex-col p-6">
-            <Section3Metas
-              financial={dados}
-              dizimosOfertas={dizimosOfertas}
-              visaoConsolidada={visaoConsolidada}
-            />
-          </div>
-        ),
-      },
+      ...(desenha(presenca, "secaoControleDeMetas")
+        ? [
+            {
+              id: "metas",
+              numero: 4,
+              titulo: "Controle de Metas",
+              conteudo: (
+                // O card de metas é o próprio conteúdo da seção; a moldura com padding
+                // fica aqui para ele não encostar nas bordas do quadro de design.
+                <div className="flex h-full w-full min-h-0 flex-col p-6">
+                  <Section3Metas
+                    financial={dados}
+                    dizimosOfertas={dizimosOfertas}
+                    visaoConsolidada={visaoConsolidada}
+                  />
+                </div>
+              ),
+            },
+          ]
+        : []),
     ],
     [
       dados,
@@ -366,6 +431,7 @@ export function Dashboard() {
       membership,
       metaAnualPorUnidade,
       metaAnualTotalGeral,
+      presenca,
       unidades,
       uniSel,
       mesSel,
@@ -390,6 +456,8 @@ export function Dashboard() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {/* Também aqui: o administrador que abriu uma base vazia precisa poder voltar. */}
+            <AlternadorDeBase />
             <span className="hidden text-sm text-ink-2 sm:inline">{user}</span>
             {papel === "admin" && (
               <Button
@@ -424,7 +492,7 @@ export function Dashboard() {
             </h1>
             <p className="mt-2 text-[15px] leading-relaxed text-ink-2">
               {papel === "admin"
-                ? "Ainda não há base de dados no servidor. Envie as planilhas em “Bases e permissões” para o dashboard aparecer."
+                ? `Ainda não há base ${base ? DECLARACOES[base].nomeComDe : ""} no servidor. Envie a planilha em “Bases e permissões” para o dashboard aparecer.`
                 : "Nenhuma unidade foi liberada para o seu acesso ainda, ou a base do período ainda não foi enviada. Fale com o Financeiro da Central."}
             </p>
           </div>
@@ -433,133 +501,149 @@ export function Dashboard() {
     );
   }
 
+  /*
+   * Com linhas, a base é sempre conhecida: os dados só entram junto com ela (ver
+   * abrirBase). A guarda existe para o compilador, e para falhar alto se um dia
+   * isso deixar de valer — desenhar sem base seria desenhar na moeda errada.
+   */
+  if (!base) throw new Error("dashboard com dados e sem base");
+
   return (
     /*
      * Coluna: o cabeçalho ocupa o que precisar e o deck fica com o resto exato
      * da tela. Antes a altura do deck era uma constante escrita à mão, que
      * quebraria agora que o cabeçalho ganhou a faixa de filtros.
+     *
+     * Tudo dentro do contexto da base: as seções leem dele a moeda, as regras
+     * da visão consolidada e as metas percentuais.
      */
-    <div className="flex h-screen flex-col overflow-hidden bg-background">
-      <header className="z-30 shrink-0 border-b border-line-soft bg-panel/85 backdrop-blur-md">
-        <div className="flex items-center justify-between gap-6 px-6 py-3">
-          <div className="flex items-center gap-3">
-            <LogoCentral className="h-9 w-9 shrink-0" />
-            <p className="text-[15px] font-semibold leading-tight text-ink">
-              Dashboard Financeiro Central
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="hidden text-sm text-ink-2 sm:inline">{user}</span>
-            {/*
-             * Só o administrador vê o caminho de volta. Sem ele, mudar a unidade
-             * de um pastor exigiria sair e entrar de novo — e a checagem de
-             * papel que vale é a do servidor; isto aqui só evita desenhar um
-             * botão que não levaria a lugar nenhum.
-             */}
-            {papel === "admin" && (
+    <BaseAtivaContexto.Provider value={baseAtivaDe(base)}>
+      <div className="flex h-screen flex-col overflow-hidden bg-background">
+        <header className="z-30 shrink-0 border-b border-line-soft bg-panel/85 backdrop-blur-md">
+          <div className="flex items-center justify-between gap-6 px-6 py-3">
+            <div className="flex items-center gap-3">
+              <LogoCentral className="h-9 w-9 shrink-0" />
+              <p className="text-[15px] font-semibold leading-tight text-ink">
+                Dashboard Financeiro Central
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <AlternadorDeBase />
+              <span className="hidden text-sm text-ink-2 sm:inline">{user}</span>
+              {/*
+               * Só o administrador vê o caminho de volta. Sem ele, mudar a unidade
+               * de um pastor exigiria sair e entrar de novo — e a checagem de
+               * papel que vale é a do servidor; isto aqui só evita desenhar um
+               * botão que não levaria a lugar nenhum.
+               */}
+              {papel === "admin" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStep("upload")}
+                  className="gap-2 border-line-strong bg-panel-2 text-ink hover:border-acc hover:bg-panel-2 hover:text-ink"
+                >
+                  <SlidersHorizontal className="h-4 w-4" />
+                  <span className="hidden sm:inline">Bases e permissões</span>
+                </Button>
+              )}
               <Button
-                variant="outline"
+                variant="ghost"
                 size="sm"
-                onClick={() => setStep("upload")}
-                className="gap-2 border-line-strong bg-panel-2 text-ink hover:border-acc hover:bg-panel-2 hover:text-ink"
+                onClick={logout}
+                className="gap-2 text-ink-2 hover:bg-panel-2 hover:text-ink"
               >
-                <SlidersHorizontal className="h-4 w-4" />
-                <span className="hidden sm:inline">Bases e permissões</span>
+                <LogOut className="h-4 w-4" />
+                <span className="hidden sm:inline">Sair</span>
               </Button>
+            </div>
+          </div>
+
+          {/* Faixa de filtros universais. */}
+          <div className="flex flex-wrap items-end gap-3 border-t border-line-soft px-6 pb-3 pt-2">
+            <div className="min-w-[110px]">
+              <label className="mb-1 block text-xs text-ink-3">Ano</label>
+              <Select value={String(ano)} onValueChange={(v) => setAno(Number(v))}>
+                <SelectTrigger className="h-10 border-line-strong bg-panel-2 text-ink shadow-panel transition hover:border-acc">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="border-line-strong bg-panel-2 text-ink">
+                  {anos.map((a) => (
+                    <SelectItem key={a} value={String(a)}>
+                      {a}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <MultiSelect
+              label="Unidade"
+              options={unidades}
+              selected={unidadesSel}
+              onChange={setUnidadesSel}
+              allLabel={rotuloTodasUnidades}
+              triggerClassName="min-w-[180px] flex-1"
+            />
+            <MultiSelect
+              label="Mês"
+              options={MESES}
+              selected={mesesSel.map((m) => MESES[m - 1])}
+              onChange={(vals) =>
+                setMesesSel(vals.map((v) => MESES.indexOf(v) + 1).sort((a, b) => a - b))
+              }
+              allLabel="Todos"
+              triggerClassName="min-w-[150px] flex-1"
+              popoverWidthClass="w-56"
+              icon={<Calendar className="h-4 w-4 text-ink-3" />}
+            />
+            <MultiSelect
+              label="Natureza Nível 3"
+              options={nat3Options}
+              selected={nat3Sel}
+              onChange={setNat3Sel}
+              allLabel="Todas"
+              triggerClassName="min-w-[190px] flex-1"
+            />
+            <MultiSelect
+              label="Projeto"
+              options={projetoOptions}
+              selected={projetoSel}
+              onChange={setProjetoSel}
+              allLabel="Todos"
+              triggerClassName="min-w-[190px] flex-1"
+            />
+            {/* Só serve à Seção 4: sem metas de aplicação na carga, ele some junto. */}
+            {desenha(presenca, "filtroMeta") && (
+              <MultiSelect
+                label="Meta"
+                options={metaOptions}
+                selected={metaSel}
+                onChange={setMetaSel}
+                allLabel="Todas"
+                triggerClassName="min-w-[170px] flex-1"
+              />
             )}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={logout}
-              className="gap-2 text-ink-2 hover:bg-panel-2 hover:text-ink"
+            <button
+              type="button"
+              onClick={limparFiltros}
+              disabled={!temFiltro}
+              title="Voltar todos os filtros ao estado inicial"
+              className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-line-strong bg-panel-2 px-3 text-sm text-ink-2 shadow-panel transition hover:border-acc hover:text-ink active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line-strong disabled:hover:text-ink-2 disabled:active:scale-100"
             >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Sair</span>
-            </Button>
+              <FilterX className="h-4 w-4" />
+              Limpar Filtros
+            </button>
           </div>
-        </div>
+        </header>
 
-        {/* Faixa de filtros universais. */}
-        <div className="flex flex-wrap items-end gap-3 border-t border-line-soft px-6 pb-3 pt-2">
-          <div className="min-w-[110px]">
-            <label className="mb-1 block text-xs text-ink-3">Ano</label>
-            <Select value={String(ano)} onValueChange={(v) => setAno(Number(v))}>
-              <SelectTrigger className="h-10 border-line-strong bg-panel-2 text-ink shadow-panel transition hover:border-acc">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="border-line-strong bg-panel-2 text-ink">
-                {anos.map((a) => (
-                  <SelectItem key={a} value={String(a)}>
-                    {a}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <MultiSelect
-            label="Unidade"
-            options={unidades}
-            selected={unidadesSel}
-            onChange={setUnidadesSel}
-            allLabel={rotuloTodasUnidades}
-            triggerClassName="min-w-[180px] flex-1"
-          />
-          <MultiSelect
-            label="Mês"
-            options={MESES}
-            selected={mesesSel.map((m) => MESES[m - 1])}
-            onChange={(vals) =>
-              setMesesSel(vals.map((v) => MESES.indexOf(v) + 1).sort((a, b) => a - b))
-            }
-            allLabel="Todos"
-            triggerClassName="min-w-[150px] flex-1"
-            popoverWidthClass="w-56"
-            icon={<Calendar className="h-4 w-4 text-ink-3" />}
-          />
-          <MultiSelect
-            label="Natureza Nível 3"
-            options={nat3Options}
-            selected={nat3Sel}
-            onChange={setNat3Sel}
-            allLabel="Todas"
-            triggerClassName="min-w-[190px] flex-1"
-          />
-          <MultiSelect
-            label="Projeto"
-            options={projetoOptions}
-            selected={projetoSel}
-            onChange={setProjetoSel}
-            allLabel="Todos"
-            triggerClassName="min-w-[190px] flex-1"
-          />
-          <MultiSelect
-            label="Meta"
-            options={metaOptions}
-            selected={metaSel}
-            onChange={setMetaSel}
-            allLabel="Todas"
-            triggerClassName="min-w-[170px] flex-1"
-          />
-          <button
-            type="button"
-            onClick={limparFiltros}
-            disabled={!temFiltro}
-            title="Voltar todos os filtros ao estado inicial"
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-line-strong bg-panel-2 px-3 text-sm text-ink-2 shadow-panel transition hover:border-acc hover:text-ink active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-line-strong disabled:hover:text-ink-2 disabled:active:scale-100"
-          >
-            <FilterX className="h-4 w-4" />
-            Limpar Filtros
-          </button>
+        {/*
+         * Sem rolagem: o deck ocupa exatamente o que sobra da tela e escala a
+         * seção ativa para caber. Trocar de seção é clicar, não rolar.
+         */}
+        <div className="min-h-0 flex-1">
+          <SectionDeck secoes={secoes} />
         </div>
-      </header>
-
-      {/*
-       * Sem rolagem: o deck ocupa exatamente o que sobra da tela e escala a
-       * seção ativa para caber. Trocar de seção é clicar, não rolar.
-       */}
-      <div className="min-h-0 flex-1">
-        <SectionDeck secoes={secoes} />
       </div>
-    </div>
+    </BaseAtivaContexto.Provider>
   );
 }

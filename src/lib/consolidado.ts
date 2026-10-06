@@ -37,6 +37,17 @@
  * resolve igual.
  */
 import { norm } from "./parsers.ts";
+import { BASES, DECLARACOES, type Base } from "./bases.ts";
+
+/*
+ * As listas moram em src/lib/bases.ts, declaradas POR BASE, e cada função
+ * recebe a base. O Brasil tem as duas regras; Angola começa sem nenhuma — e,
+ * com a lista vazia, as funções dizem "não" para tudo, que é exatamente a soma
+ * simples. Se um dia Angola precisar de uma regra, ela entra lá, e não aqui.
+ */
+const chaves = (lista: readonly string[]) => new Set(lista.map((v) => norm(v)));
+const porBase = (lista: (b: Base) => readonly string[]) =>
+  Object.fromEntries(BASES.map((b) => [b, chaves(lista(b))])) as Record<Base, Set<string>>;
 
 /*
  * As comparações ignoram acento, maiúscula e espaço nas pontas (ver `norm`):
@@ -56,12 +67,11 @@ import { norm } from "./parsers.ts";
  * Receita Total fica em R$ 55.053.598,50 e a Despesa Total em
  * R$ 48.828.247,08.
  */
-const UNIDADES_FORA_DOS_CARDS = ["Central Missionária", "Central Social"];
-const CHAVES_UNIDADES = new Set(UNIDADES_FORA_DOS_CARDS.map((u) => norm(u)));
+const UNIDADES_FORA_DOS_CARDS = porBase((b) => DECLARACOES[b].consolidado.unidadesForaDosCards);
 
-/** Se a UNIDADE fica de fora dos cards de Receita e Despesa Total da rede. */
-export function ficaForaDoConsolidado(unidade: string): boolean {
-  return CHAVES_UNIDADES.has(norm(unidade));
+/** Se a UNIDADE fica de fora dos cards de Receita e Despesa Total da rede, nesta base. */
+export function ficaForaDoConsolidado(unidade: string, base: Base): boolean {
+  return UNIDADES_FORA_DOS_CARDS[base].has(norm(unidade));
 }
 
 /* ======================= 2. o gráfico de metas ======================= */
@@ -84,10 +94,9 @@ export function ficaForaDoConsolidado(unidade: string): boolean {
  * despesas para a Central Missionária; em "Débito 2" isso vira 0,0%, como se
  * ela não tivesse contribuído com nada.
  */
-const METAS_EM_DEBITO_2 = ["Central Missionária", "Assistência Social"];
-const CHAVES_METAS = new Set(METAS_EM_DEBITO_2.map((m) => norm(m)));
+const METAS_EM_DEBITO_2 = porBase((b) => DECLARACOES[b].consolidado.metasEmDebito2);
 
-/** Se a META lê "Débito 2" no gráfico de metas da rede. */
-export function metaUsaDebito2(meta: string): boolean {
-  return CHAVES_METAS.has(norm(meta));
+/** Se a META lê "Débito 2" no gráfico de metas da rede, nesta base. */
+export function metaUsaDebito2(meta: string, base: Base): boolean {
+  return METAS_EM_DEBITO_2[base].has(norm(meta));
 }

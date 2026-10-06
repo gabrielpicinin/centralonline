@@ -7,6 +7,7 @@
  * memória do React e agora é o banco.
  */
 import { iniciarCargaServer, enviarLoteServer, finalizarCargaServer } from "./dados.functions";
+import type { Base } from "./bases";
 import type { FinancialRow, MembershipRow, SaldoRow } from "./parsers";
 
 /*
@@ -24,6 +25,8 @@ function fatiar<T>(lista: T[], tamanho: number): T[][] {
 }
 
 export interface BasesParaEnviar {
+  /** Em qual base esta carga entra. Obrigatório: o compilador cobra de quem chama. */
+  base: Base;
   arquivos: string[];
   financial: FinancialRow[];
   membership: MembershipRow[];
@@ -40,7 +43,9 @@ export interface BasesParaEnviar {
  * membresia e os saldos ainda sobem.
  */
 export async function enviarBases(bases: BasesParaEnviar, onProgresso?: (fracao: number) => void) {
-  const { cargaId } = await iniciarCargaServer({ data: { arquivos: bases.arquivos } });
+  const { cargaId } = await iniciarCargaServer({
+    data: { base: bases.base, arquivos: bases.arquivos },
+  });
 
   const lotes: { tipo: "lancamentos" | "membresia" | "saldos"; linhas: unknown[] }[] = [
     ...fatiar(bases.financial, TAMANHO_DO_LOTE).map((linhas) => ({

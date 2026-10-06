@@ -5,15 +5,16 @@ algo der errado, então vai direto ao ponto.
 
 ---
 
-## O essencial em cinco linhas
+## O essencial em seis linhas
 
-|                         |                                                                     |
-| ----------------------- | ------------------------------------------------------------------- |
-| **O que é**             | Um site interno. Acesso pela rede da Central, via VPN.              |
-| **Roda com**            | Node **22.18.0 ou mais novo**. Use 24, como o servidor. Nada além. |
-| **Onde ficam os dados** | A pasta `dados/` — ou o caminho em `DADOS_DIR`.                     |
-| **Banco de dados**      | SQLite, um arquivo. Não há serviço de banco para manter.            |
-| **Contas**              | 1 administrador (`Financeiro`) e os pastores. Sem cadastro público. |
+|                         |                                                                       |
+| ----------------------- | --------------------------------------------------------------------- |
+| **O que é**             | Um site interno. Acesso pela rede da Central, via VPN.                |
+| **Roda com**            | Node **22.18.0 ou mais novo**. Use 24, como o servidor. Nada além.   |
+| **Onde ficam os dados** | A pasta `dados/` — ou o caminho em `DADOS_DIR`.                       |
+| **Banco de dados**      | SQLite, um arquivo. Não há serviço de banco para manter.              |
+| **Contas**              | 1 administrador (`Financeiro`) e os pastores. Sem cadastro público.   |
+| **Bases**               | Duas, independentes: Brasil (real) e Angola (kwanza). Nunca se somam. |
 
 ---
 
@@ -210,8 +211,10 @@ O tráfego entre o navegador e o Apache viaja em texto claro. Na prática:
 - **Os números do dashboard viajam em claro** — receitas, despesas e metas por
   unidade.
 
-O que **não** fica exposto: as senhas guardadas. Elas estão em *hash* no banco e
-não trafegam em momento nenhum, nem cifradas nem em claro.
+O que **não** fica exposto: a senha do administrador, que só existe em *hash* e
+não trafega nunca. As de pastor ficam no banco em hash e cifradas; uma delas só
+viaja quando o Financeiro pede **Mostrar senha** — e, sem HTTPS, viaja em claro
+nessa hora, como a senha digitada no login.
 
 ### O que sustenta a segurança no lugar do TLS
 
@@ -267,6 +270,55 @@ volta.
 
 ---
 
+## As duas bases: Brasil e Angola
+
+O sistema opera duas bases que **nunca se misturam nem se somam**, cada uma com
+o seu dashboard. Elas moram no mesmo banco, mas cada envio, cada permissão e
+cada leitura é de uma base só.
+
+**Enviar.** Em _Bases e permissões_ há um bloco por país, cada um com o nome e a
+cor dele. Enviar um não toca no outro: substituir o Brasil deixa Angola como
+estava, e vice-versa.
+
+| Bloco  | Arquivos                                                                   |
+| ------ | -------------------------------------------------------------------------- |
+| Brasil | Financeiro (obrigatório), membresia e saldo (opcionais).                   |
+| Angola | Só o financeiro, enquanto membresia e saldo não existirem por lá.          |
+
+**Arquivo trocado é recusado.** A planilha de Angola diz "Central Angola" em
+todas as linhas da coluna "Descrição CR. 1º Nível"; a do Brasil, em nenhuma. Um
+arquivo no bloco errado é recusado com uma mensagem que diz isso, **antes de
+qualquer linha sair do navegador** — a base que está no servidor fica intacta.
+O mesmo vale para uma planilha sem as colunas essenciais: a mensagem lista as
+que faltam.
+
+**Quem vê o quê.** O pastor vê as bases em que tem ao menos uma unidade marcada.
+Com uma só, entra direto no dashboard dela e não vê alternador nenhum — para
+ele, a outra base não existe. Com as duas, escolhe numa tela curta depois do
+login e troca pelo alternador no canto superior direito. O Financeiro usa o
+mesmo alternador. O dashboard de Angola mostra os valores em kwanza
+(`Kz 1.234,56`).
+
+**Meta aparece quando a planilha tem meta.** Não é configuração de país, é o
+que a carga trouxe:
+
+- as colunas **"Meta Anual &lt;unidade&gt;"** com algum valor ligam o card "Meta de
+  Dízimos", o gráfico "Dízimos e Ofertas vs. Meta" e as partes de meta da
+  Seção 2;
+- a coluna **"Meta"** preenchida em algum lançamento liga a Seção 4 inteira e o
+  filtro "Meta" do topo.
+
+Sem elas, esses blocos simplesmente não aparecem, sem aviso — é o estado normal
+de Angola hoje. Quando a planilha de Angola vier com as colunas preenchidas, os
+blocos aparecem sozinhos, sem atualização do sistema.
+
+**Aviso de meta no envio.** Quando a planilha tem meta e alguma unidade não tem
+coluna "Meta Anual" com **exatamente** o nome dela, o envio avisa e lista as
+unidades — não recusa. A correção é na planilha: o nome da coluna tem de ser
+igual ao da unidade.
+
+---
+
 ## O dia ruim: ninguém consegue entrar
 
 Não existe recuperação por e-mail — o sistema não envia e-mail. Se a senha do
@@ -294,21 +346,41 @@ quem já tem acesso ao servidor.
 
 ## Senha de pastor
 
-O caminho normal **não** é este script: é a tela do administrador. O Financeiro
-entra, vai em _Bases e permissões_, e usa o ícone de chave na linha do pastor
-para gerar uma senha nova, que aparece uma vez com botão de copiar.
+O caminho normal **não** é este script: é a tela do administrador. Em _Bases e
+permissões_, o ícone de chave na linha do pastor tem duas opções:
 
-A senha não é guardada em texto em lugar nenhum — o que fica no banco é um
-hash. Por isso não existe "ver a senha de novo": só gerar outra.
+- **Mostrar senha** — exibe de novo a senha atual dele, com botão de copiar;
+- **Gerar nova senha** — troca a senha; a anterior deixa de valer na hora.
+
+A senha do pastor fica guardada de dois jeitos: em _hash_, que é o que o login
+confere, e cifrada, para o "Mostrar senha" poder exibi-la. A do administrador
+fica **só** em hash — ninguém pode vê-la, nem pela tela.
+
+Contas de pastor criadas antes desse recurso só têm o hash. Para poder mostrar a
+senha delas, gere uma nova uma vez; a partir daí, ela pode ser mostrada sempre.
+Trocar o `SESSION_SECRET` tem o mesmo efeito em todas — ver a seção sobre ele.
 
 ---
 
 ## Perguntas que vão aparecer
 
 **"O pastor diz que não vê nada."**
-Provavelmente não tem unidade marcada. O Financeiro abre _Bases e permissões_,
-marca as unidades dele e aperta **Salvar seleções** — o botão é fácil de
-esquecer, e sem ele nada muda.
+Provavelmente não tem unidade marcada **na base que ele abriu** — cada base tem as
+suas, e marcar o Brasil não libera Angola. O Financeiro abre _Bases e
+permissões_, marca as unidades dele na coluna da base certa e aperta **Salvar
+seleções** — o botão é fácil de esquecer, e sem ele nada muda. Base marcada sem
+nenhuma unidade é base que ele não vê; a tela avisa isso na própria linha.
+
+**"O envio foi recusado: 'Este arquivo não pode entrar na base…'."**
+O arquivo é do outro país — o de Angola no bloco do Brasil, ou o contrário.
+Nada foi enviado, e a base no servidor continua a mesma. Envie no bloco certo.
+
+**"Os cards de membresia mostram '—'."**
+A base foi enviada sem o arquivo de membresia. Reenvie-a com ele.
+
+**"Angola não tem a Seção 4, nem o card de meta."**
+É o normal enquanto a planilha de Angola vier sem meta — ver _As duas bases_.
+Quando ela vier com as colunas preenchidas, os blocos aparecem sozinhos.
 
 **"Mudei as unidades e ele continua vendo o de antes."**
 Vale na próxima vez que o dashboard dele buscar dados. Peça para atualizar a
@@ -343,9 +415,25 @@ pm2 start central
 A pasta de dados não é tocada por nada disso — ela fica fora do `.output/`, no
 caminho de `DADOS_DIR`, que é justamente por isso que essa variável é obrigatória.
 
-O banco não é tocado por uma atualização: tabelas novas são criadas sozinhas na
-partida, e as existentes não são alteradas. Ainda assim, **faça o backup antes** —
-custa segundos.
+**A atualização das duas bases (Brasil e Angola) MIGRA o banco** no primeiro
+acesso depois de subir: as cargas e as permissões existentes passam a ser do
+Brasil. A migração é uma transação só, idempotente, e foi ensaiada numa cópia
+do banco real sem perder uma linha. Mesmo assim, confira:
+
+```bash
+# 3. Abrir o site uma vez NO NAVEGADOR — a tela de login basta, é ela que abre o
+#    banco (um curl não abre) — e, ANTES de qualquer envio, um segundo backup
+node ferramentas/backup.mjs /caminho/do/backup
+
+# 4. Comparar os dois backups (os arquivos levam data e hora no nome):
+#    tem de terminar em "Nenhuma linha perdida ou alterada em nenhuma tabela."
+node ferramentas/impressao-digital.mjs /caminho/do/backup/central-ANTES.db /caminho/do/backup/central-DEPOIS.db
+```
+
+Se a migração parar, o log diz `[banco] o esquema não pôde ser preparado` com o
+motivo, e nada foi alterado. O caso previsível é uma permissão de um perfil que
+não existe mais; a mensagem traz o `perfil_id` e o comando `DELETE` que resolve.
+Rodar a impressão digital no backup de antes já mostra esse caso.
 
 ---
 
@@ -355,9 +443,15 @@ custa segundos.
 npm test
 ```
 
-Sete testes, e todos existem por um motivo só: garantir que um pastor nunca veja
-uma unidade que não é dele. Eles falham se alguém alterar o código de leitura e
-deixar escapar alguma tabela.
+Rodam na máquina de quem gera o pacote, não no servidor. O que eles protegem:
 
-**Rode antes de publicar qualquer atualização.** Se algum falhar, não publique:
-o que eles protegem é exatamente o que não pode vazar.
+- um pastor nunca recebe uma unidade que não é dele;
+- as duas bases nunca se misturam — pedir uma base sem acesso dá vazio, e
+  enviar ou podar uma base não toca na outra;
+- a migração para duas bases não perde uma linha;
+- cada planilha é lida pela base certa, e o arquivo trocado é recusado;
+- os blocos de meta aparecem e somem pelos dados, nunca pelo nome da base.
+
+Cada proteção foi conferida desfazendo-a de propósito: com ela desfeita, algum
+teste falha. **Rode antes de publicar qualquer atualização.** Se algum falhar,
+não publique: o que eles protegem é exatamente o que não pode vazar.

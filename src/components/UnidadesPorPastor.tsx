@@ -1,9 +1,14 @@
 /*
- * A segunda seção da tela do administrador: quem vê o quê.
+ * A segunda seção da tela do administrador: quem vê o quê, em cada base.
  *
- * A lista de unidades não é escrita à mão em lugar nenhum — ela sai da tabela
- * que cada envio de base alimenta. Abrir ou fechar uma igreja se reflete aqui
- * sozinho, no envio seguinte.
+ * A lista de unidades não é escrita à mão em lugar nenhum — ela sai dos
+ * lançamentos da carga ativa de cada base. Abrir ou fechar uma igreja se
+ * reflete aqui sozinho, no envio seguinte.
+ *
+ * Ter acesso a uma base É ter ao menos uma unidade marcada nela; não há outra
+ * chave. Por isso a tela avisa, na própria linha, quando uma base está marcada
+ * sem unidade nenhuma: no servidor isso é "nada", e o pastor abriria um
+ * dashboard vazio — ou nem veria a base, que é o que de fato acontece.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
@@ -25,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MultiSelect } from "@/components/dashboard/MultiSelect";
 import { copiarTexto } from "@/lib/copiar";
+import { BASES, DECLARACOES, type Base } from "@/lib/bases";
 import {
   listarPastoresServer,
   criarPastorServer,
@@ -39,7 +45,8 @@ interface Pastor {
   usuario: string;
   nome: string;
   ativo: boolean;
-  unidades: string[];
+  /** As unidades liberadas em cada base, como estão gravadas no servidor. */
+  unidadesPorBase: Record<Base, string[]>;
   ultimoAcesso: string | null;
   temSenhaVisivel: boolean;
 }
@@ -67,25 +74,38 @@ function quandoFoi(iso: string): string {
 /** Mesma lista, mesma ordem? Só isso decide se a linha tem alteração pendente. */
 const iguais = (a: string[], b: string[]) => a.length === b.length && a.every((v, i) => v === b[i]);
 
-export function UnidadesPorPastor() {
+/** Uma alteração por pastor E base: salvar o Brasil de alguém nunca regrava o Angola dele. */
+type Chave = `${number}:${Base}`;
+const chaveDe = (perfilId: number, base: Base): Chave => `${perfilId}:${base}`;
+
+export function UnidadesPorPastor({ versao = 0 }: { versao?: number }) {
   const [pastores, setPastores] = useState<Pastor[]>([]);
-  const [unidades, setUnidades] = useState<string[]>([]);
+  const [unidadesPorBase, setUnidadesPorBase] = useState<Record<Base, string[]>>({
+    brasil: [],
+    angola: [],
+  });
   /*
-   * Permissões apontando para unidades que a base atual não tem mais. Quem está
+   * Permissões apontando para unidades que a base delas não tem mais. Quem está
    * nesta lista abre o dashboard e não vê nada — e sem este aviso ninguém
    * descobriria o motivo.
    */
-  const [orfas, setOrfas] = useState<{ perfilId: number; unidade: string }[]>([]);
+  const [orfas, setOrfas] = useState<{ perfilId: number; base: Base; unidade: string }[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
   /*
-   * O que o administrador mexeu e ainda não salvou. Fica separado do que veio
-   * do servidor de propósito: é a diferença entre os dois que diz quais linhas
-   * estão pendentes, e é ela que o botão de salvar envia.
+   * O que o administrador mexeu e ainda não salvou, por pastor e base. Fica
+   * separado do que veio do servidor de propósito: é a diferença entre os dois
+   * que diz o que está pendente, e é ela que o botão de salvar envia.
    */
-  const [rascunho, setRascunho] = useState<Record<number, string[]>>({});
+  const [rascunho, setRascunho] = useState<Partial<Record<Chave, string[]>>>({});
+  /*
+   * As bases marcadas na tela. Marcar uma base não grava nada — acesso é ter
+   * unidade —, mas abre a escolha de unidades e, enquanto nenhuma for marcada,
+   * mostra o aviso de que o pastor não vai ver nada daquela base.
+   */
+  const [marcadas, setMarcadas] = useState<Partial<Record<Chave, boolean>>>({});
 
   /*
    * A senha em exibição no cartão — recém gerada, ou pedida de novo pelo
@@ -110,27 +130,50 @@ export function UnidadesPorPastor() {
   const salvar = useServerFn(salvarPermissoesServer);
   const definirAtivo = useServerFn(definirAtivoServer);
 
-  const recarregar = useCallback(async () => {
-    const r = await listar();
-    setPastores(r.pastores);
-    setUnidades(r.unidades);
-    setOrfas(r.orfas);
-    setRascunho({});
-  }, [listar]);
+  /*
+   * Relê pastores, unidades e órfãs. Depois de um envio de base, o rascunho
+   * fica: as unidades oferecidas podem ter mudado, mas o que o administrador
+   * já marcou e não salvou não pode sumir por causa disso.
+   */
+  const recarregar = useCallback(
+    async ({ manterRascunho = false } = {}) => {
+      const r = await listar();
+      setPastores(r.pastores);
+      setUnidadesPorBase(r.unidadesPorBase);
+      setOrfas(r.orfas);
+      if (!manterRascunho) {
+        setRascunho({});
+        setMarcadas({});
+      }
+    },
+    [listar],
+  );
 
   useEffect(() => {
-    void recarregar()
+    void recarregar({ manterRascunho: versao > 0 })
       .catch(() => setErro("Não consegui carregar a lista de pastores."))
       .finally(() => setCarregando(false));
-  }, [recarregar]);
+  }, [recarregar, versao]);
+
+  /** As unidades de um pastor numa base, contando o que ainda não foi salvo. */
+  const unidadesDe = (p: Pastor, base: Base) =>
+    rascunho[chaveDe(p.id, base)] ?? p.unidadesPorBase[base];
+
+  /** Base marcada na tela: tem unidade, ou o administrador acabou de marcá-la. */
+  const marcada = (p: Pastor, base: Base) =>
+    marcadas[chaveDe(p.id, base)] ?? unidadesDe(p, base).length > 0;
 
   const pendentes = useMemo(
     () =>
-      pastores
-        .filter((p) => rascunho[p.id] && !iguais(rascunho[p.id], p.unidades))
-        .map((p) => p.id),
+      pastores.flatMap((p) =>
+        BASES.filter((b) => {
+          const r = rascunho[chaveDe(p.id, b)];
+          return r !== undefined && !iguais(r, p.unidadesPorBase[b]);
+        }).map((b) => ({ perfilId: p.id, base: b })),
+      ),
     [pastores, rascunho],
   );
+  const pastoresPendentes = new Set(pendentes.map((x) => x.perfilId));
 
   /*
    * Avisa antes de fechar a aba com alteração não salva. É fácil marcar seis
@@ -144,12 +187,20 @@ export function UnidadesPorPastor() {
     return () => window.removeEventListener("beforeunload", avisar);
   }, [pendentes.length]);
 
-  const unidadesDe = (p: Pastor) => rascunho[p.id] ?? p.unidades;
+  const orfasDe = (p: Pastor, base: Base) =>
+    orfas.filter((o) => o.perfilId === p.id && o.base === base).map((o) => o.unidade);
 
-  const orfasDe = (p: Pastor) => orfas.filter((o) => o.perfilId === p.id).map((o) => o.unidade);
+  const escolher = (p: Pastor, base: Base, novas: string[]) =>
+    setRascunho((r) => ({ ...r, [chaveDe(p.id, base)]: [...novas].sort() }));
 
-  const marcar = (p: Pastor, novas: string[]) =>
-    setRascunho((r) => ({ ...r, [p.id]: [...novas].sort() }));
+  /*
+   * Desmarcar a base tira todas as unidades dela — é o que tira o acesso.
+   * Marcar só abre a escolha; o acesso começa com a primeira unidade.
+   */
+  const alternarBase = (p: Pastor, base: Base, ligar: boolean) => {
+    setMarcadas((m) => ({ ...m, [chaveDe(p.id, base)]: ligar }));
+    if (!ligar) escolher(p, base, []);
+  };
 
   const salvarTudo = async () => {
     setSalvando(true);
@@ -157,12 +208,17 @@ export function UnidadesPorPastor() {
     try {
       const r = await salvar({
         data: {
-          alteracoes: pendentes.map((id) => ({ perfilId: id, unidades: rascunho[id] })),
+          alteracoes: pendentes.map(({ perfilId, base }) => ({
+            perfilId,
+            base,
+            unidades: rascunho[chaveDe(perfilId, base)] ?? [],
+          })),
         },
       });
       setPastores(r.pastores);
       setOrfas(r.orfas);
       setRascunho({});
+      setMarcadas({});
     } catch {
       setErro("Não consegui salvar. Nada foi alterado — tente de novo.");
     } finally {
@@ -271,8 +327,9 @@ export function UnidadesPorPastor() {
         </Button>
       </div>
       <p className="mb-5 max-w-2xl text-sm text-ink-2">
-        Marque as unidades que cada pastor poderá ver no dashboard. As mudanças passam a valer
-        quando você salvar.
+        Marque, para cada pastor, as bases e — dentro de cada uma — as unidades que ele poderá ver.
+        Base sem unidade marcada é base que ele não vê. As mudanças passam a valer quando você
+        salvar.
       </p>
 
       {orfas.length > 0 && (
@@ -290,7 +347,14 @@ export function UnidadesPorPastor() {
               nas linhas destacadas abaixo e salve.
             </p>
             <p className="mt-1.5 font-mono text-xs text-ink-3">
-              {[...new Set(orfas.map((o) => o.unidade))].join(" · ")}
+              {BASES.filter((b) => orfas.some((o) => o.base === b))
+                .map(
+                  (b) =>
+                    `${DECLARACOES[b].nome}: ${[
+                      ...new Set(orfas.filter((o) => o.base === b).map((o) => o.unidade)),
+                    ].join(", ")}`,
+                )
+                .join(" · ")}
             </p>
           </div>
         </div>
@@ -406,131 +470,192 @@ export function UnidadesPorPastor() {
             Nenhum pastor cadastrado ainda. Use “Adicionar pastor” acima.
           </p>
         ) : (
-          pastores.map((p) => {
-            const pendente = pendentes.includes(p.id);
-            const semBase = orfasDe(p);
-            return (
-              <div
-                key={p.id}
-                className={`grid grid-cols-1 items-center gap-3 border-b border-line-soft px-4 py-3 last:border-b-0 md:grid-cols-[1fr_280px_auto] ${
-                  pendente ? "bg-acc/[.06]" : ""
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className={`truncate text-sm ${p.ativo ? "text-ink" : "text-ink-3"}`}>
-                    {p.nome}
-                    {!p.ativo && (
-                      <span className="ml-2 rounded border border-line-strong px-1.5 py-0.5 text-[10.5px] uppercase tracking-wide text-ink-3">
-                        desativado
-                      </span>
-                    )}
-                  </p>
-                  <p className="truncate font-mono text-xs text-ink-3">{p.usuario}</p>
-                  {/*
+          <>
+            {/* Cabeçalho das colunas: de que base é cada escolha, sem precisar adivinhar. */}
+            <div className="hidden gap-3 border-b border-line-strong bg-panel-2/50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-ink-3 md:grid md:grid-cols-[1fr_260px_260px_auto]">
+              <span>Pastor</span>
+              {BASES.map((b) => (
+                <span key={b}>{DECLARACOES[b].nome}</span>
+              ))}
+              <span className="w-[76px]" />
+            </div>
+            {pastores.map((p) => {
+              const pendente = pastoresPendentes.has(p.id);
+              return (
+                <div
+                  key={p.id}
+                  className={`grid grid-cols-1 items-start gap-3 border-b border-line-soft px-4 py-3 last:border-b-0 md:grid-cols-[1fr_260px_260px_auto] ${
+                    pendente ? "bg-acc/[.06]" : ""
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className={`truncate text-sm ${p.ativo ? "text-ink" : "text-ink-3"}`}>
+                      {p.nome}
+                      {!p.ativo && (
+                        <span className="ml-2 rounded border border-line-strong px-1.5 py-0.5 text-[10.5px] uppercase tracking-wide text-ink-3">
+                          desativado
+                        </span>
+                      )}
+                    </p>
+                    <p className="truncate font-mono text-xs text-ink-3">{p.usuario}</p>
+                    {/*
                     "Nunca entrou" em amarelo e não em cinza: é a linha que
                     merece atenção. Quase sempre quer dizer senha entregue e não
                     usada — ou não entregue.
                   */}
-                  <p
-                    className={`mt-0.5 flex items-center gap-1 text-xs ${
-                      p.ultimoAcesso ? "text-ink-3" : "text-[#E9B949]"
-                    }`}
-                    title={
-                      p.ultimoAcesso
-                        ? new Date(p.ultimoAcesso).toLocaleString("pt-BR")
-                        : "Ainda não entrou nenhuma vez"
-                    }
-                  >
-                    <Clock className="h-3 w-3 shrink-0" />
-                    {p.ultimoAcesso ? `Último acesso ${quandoFoi(p.ultimoAcesso)}` : "Nunca entrou"}
-                  </p>
-                  {semBase.length > 0 && (
-                    <p className="mt-0.5 truncate text-xs text-[#E9B949]">
-                      fora da base atual: {semBase.join(", ")}
+                    <p
+                      className={`mt-0.5 flex items-center gap-1 text-xs ${
+                        p.ultimoAcesso ? "text-ink-3" : "text-[#E9B949]"
+                      }`}
+                      title={
+                        p.ultimoAcesso
+                          ? new Date(p.ultimoAcesso).toLocaleString("pt-BR")
+                          : "Ainda não entrou nenhuma vez"
+                      }
+                    >
+                      <Clock className="h-3 w-3 shrink-0" />
+                      {p.ultimoAcesso
+                        ? `Último acesso ${quandoFoi(p.ultimoAcesso)}`
+                        : "Nunca entrou"}
                     </p>
-                  )}
-                </div>
+                  </div>
 
-                <MultiSelect
-                  options={unidades}
-                  selected={unidadesDe(p)}
-                  onChange={(novas) => marcar(p, novas)}
-                  allLabel="Todas as unidades"
-                  noneLabel="Nenhuma unidade"
-                  triggerClassName={
-                    pendente ? "border-acc" : semBase.length ? "border-[#E9B949]/60" : ""
-                  }
-                  popoverWidthClass="w-80"
-                />
+                  {BASES.map((b) => {
+                    const d = DECLARACOES[b];
+                    const ligada = marcada(p, b);
+                    const escolhidas = unidadesDe(p, b);
+                    const semBase = orfasDe(p, b);
+                    const alterada = pendentes.some((x) => x.perfilId === p.id && x.base === b);
+                    const disponiveis = unidadesPorBase[b];
+                    return (
+                      <div key={b} className="min-w-0 space-y-1.5">
+                        <p className="text-sm font-semibold text-ink md:hidden">{d.nome}</p>
+                        <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-2">
+                          <input
+                            type="checkbox"
+                            checked={ligada}
+                            disabled={!disponiveis.length && !escolhidas.length}
+                            onChange={(e) => alternarBase(p, b, e.target.checked)}
+                            className="h-4 w-4 accent-acc"
+                          />
+                          {ligada ? `Acesso ao dashboard ${d.nomeComDe}` : "Sem acesso"}
+                        </label>
+                        {/*
+                        Base sem carga ainda não tem unidade para oferecer — a
+                        lista sai dos lançamentos dela. Melhor dizer isso do que
+                        mostrar uma escolha vazia.
+                      */}
+                        {!disponiveis.length && !escolhidas.length ? (
+                          <p className="text-xs text-ink-3">
+                            Base {d.nomeComDe} ainda não enviada.
+                          </p>
+                        ) : (
+                          ligada && (
+                            <MultiSelect
+                              options={disponiveis}
+                              selected={escolhidas}
+                              onChange={(novas) => escolher(p, b, novas)}
+                              allLabel="Todas as unidades"
+                              noneLabel="Nenhuma unidade"
+                              triggerClassName={
+                                alterada
+                                  ? "border-acc"
+                                  : semBase.length || !escolhidas.length
+                                    ? "border-[#E9B949]/60"
+                                    : ""
+                              }
+                              popoverWidthClass="w-80"
+                            />
+                          )
+                        )}
+                        {/*
+                        O aviso que o servidor não dá: lista vazia lá é "nada",
+                        e aqui isso precisa estar escrito, na linha, antes de
+                        salvar.
+                      */}
+                        {ligada && !escolhidas.length && disponiveis.length > 0 && (
+                          <p className="text-xs text-[#E9B949]">
+                            Nenhuma unidade marcada: ele não verá nada {d.nomeComDe}.
+                          </p>
+                        )}
+                        {semBase.length > 0 && (
+                          <p className="truncate text-xs text-[#E9B949]">
+                            fora da base atual: {semBase.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
 
-                <div className="flex items-center gap-1">
-                  {/*
+                  <div className="flex items-center gap-1">
+                    {/*
                     A chave virou menu, com as duas coisas que se faz com a
                     senha de alguém: ver a atual, ou trocar por outra. Ficam
                     lado a lado porque a segunda é a saída da primeira quando
                     não há o que mostrar.
                   */}
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        title="Senha"
-                        className="grid h-9 w-9 place-content-center rounded-lg text-ink-3 transition hover:bg-panel-2 hover:text-ink"
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button
+                          type="button"
+                          title="Senha"
+                          className="grid h-9 w-9 place-content-center rounded-lg text-ink-3 transition hover:bg-panel-2 hover:text-ink"
+                        >
+                          <KeyRound className="h-4 w-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent
+                        align="end"
+                        className="w-64 border-line-strong bg-panel-2 p-1.5 text-ink"
                       >
-                        <KeyRound className="h-4 w-4" />
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      align="end"
-                      className="w-64 border-line-strong bg-panel-2 p-1.5 text-ink"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => void mostrarSenha(p)}
-                        className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-panel"
-                      >
-                        <Eye className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-                        <span>
-                          Mostrar senha
-                          {/*
+                        <button
+                          type="button"
+                          onClick={() => void mostrarSenha(p)}
+                          className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-panel"
+                        >
+                          <Eye className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
+                          <span>
+                            Mostrar senha
+                            {/*
                             Contas de antes deste recurso só têm hash. Dizer isso
                             aqui, antes do clique, poupa o administrador de achar
                             que o botão está quebrado.
                           */}
-                          {!p.temSenhaVisivel && (
-                            <span className="mt-0.5 block text-xs text-ink-3">
-                              Indisponível para esta conta — gere uma nova para poder ver depois
-                            </span>
-                          )}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void novaSenha(p)}
-                        className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-panel"
-                      >
-                        <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
-                        <span>
-                          Gerar nova senha
-                          <span className="mt-0.5 block text-xs text-ink-3">
-                            A atual deixa de valer na hora
+                            {!p.temSenhaVisivel && (
+                              <span className="mt-0.5 block text-xs text-ink-3">
+                                Indisponível para esta conta — gere uma nova para poder ver depois
+                              </span>
+                            )}
                           </span>
-                        </span>
-                      </button>
-                    </PopoverContent>
-                  </Popover>
-                  <button
-                    type="button"
-                    title={p.ativo ? "Desativar acesso" : "Reativar acesso"}
-                    onClick={() => void alternarAtivo(p)}
-                    className="grid h-9 w-9 place-content-center rounded-lg text-ink-3 transition hover:bg-panel-2 hover:text-ink"
-                  >
-                    {p.ativo ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
-                  </button>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void novaSenha(p)}
+                          className="flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition hover:bg-panel"
+                        >
+                          <KeyRound className="mt-0.5 h-4 w-4 shrink-0 text-ink-3" />
+                          <span>
+                            Gerar nova senha
+                            <span className="mt-0.5 block text-xs text-ink-3">
+                              A atual deixa de valer na hora
+                            </span>
+                          </span>
+                        </button>
+                      </PopoverContent>
+                    </Popover>
+                    <button
+                      type="button"
+                      title={p.ativo ? "Desativar acesso" : "Reativar acesso"}
+                      onClick={() => void alternarAtivo(p)}
+                      className="grid h-9 w-9 place-content-center rounded-lg text-ink-3 transition hover:bg-panel-2 hover:text-ink"
+                    >
+                      {p.ativo ? <Ban className="h-4 w-4" /> : <RotateCcw className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+          </>
         )}
       </div>
 
@@ -547,9 +672,9 @@ export function UnidadesPorPastor() {
         </Button>
         {pendentes.length > 0 && (
           <span className="font-mono text-sm text-[#E9B949]">
-            {pendentes.length === 1
+            {pastoresPendentes.size === 1
               ? "1 pastor com alteração não salva"
-              : `${pendentes.length} pastores com alteração não salva`}
+              : `${pastoresPendentes.size} pastores com alteração não salva`}
           </span>
         )}
       </div>

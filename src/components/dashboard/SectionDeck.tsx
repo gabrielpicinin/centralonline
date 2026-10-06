@@ -53,6 +53,17 @@ interface Geo {
 
 const VAZIA: Caixa = { x: 0, y: 0, w: 0, h: 0 };
 
+/*
+ * Largura do trilho, e a altura que uma miniatura ocupa quando a seção cabe
+ * nele pela largura. Uma vaga mais alta que isso só ganharia faixas vazias em
+ * cima e embaixo da miniatura — o "retângulo vazio" —, então ela para aqui.
+ */
+const TRILHO_W = 264;
+const MINIATURA_H = Math.round((TRILHO_W * DESIGN_H) / DESIGN_W);
+/* O rótulo "Seção N" + título, em altura fixa para a conta acima fechar. */
+const ROTULO_H = 31;
+const ROTULO_GAP = 8;
+
 export function SectionDeck({ secoes }: { secoes: SecaoDef[] }) {
   const [ativo, setAtivo] = useState(secoes[0]?.id ?? "");
   // Miniatura sob o cursor: cresce um pouco e clareia, para o alvo do clique dar
@@ -146,9 +157,17 @@ export function SectionDeck({ secoes }: { secoes: SecaoDef[] }) {
     <div ref={containerRef} className="relative h-full w-full">
       {/* ---- camada de layout: só reserva o espaço, não desenha conteúdo ---- */}
       <div className="flex h-full w-full gap-6 p-6">
+        {/*
+         * O trilho reparte a altura entre as seções que EXISTEM — três quando a
+         * carga não tem metas de aplicação, quatro quando tem. Cada vaga cresce
+         * até o tamanho da própria miniatura e para; o que sobrar vira espaço
+         * igual entre elas (justify-between). Assim, com três, não fica nem
+         * buraco onde a quarta ficava, nem caixa esticada com faixa vazia.
+         */}
         <nav
           aria-label="Seções do dashboard"
-          className="flex w-[264px] shrink-0 flex-col justify-between gap-4"
+          className="flex shrink-0 flex-col justify-between gap-4"
+          style={{ width: TRILHO_W }}
         >
           {secoes.map((s, i) => {
             const eAtivo = s.id === ativo;
@@ -165,13 +184,17 @@ export function SectionDeck({ secoes }: { secoes: SecaoDef[] }) {
                 whileTap={{ scale: 0.965 }}
                 transition={{ type: "spring", stiffness: 500, damping: 30 }}
                 className="group flex min-h-0 flex-1 flex-col text-left focus:outline-none"
+                style={{ maxHeight: ROTULO_H + ROTULO_GAP + MINIATURA_H }}
               >
                 {/*
                  * Número e título em duas linhas. Numa linha só, a 264px, os
                  * títulos longos ("Análise de Despesas") empurravam o rótulo e
                  * a separação dependia de uma margem lateral — frágil e apertado.
                  */}
-                <span className="mb-2 block leading-tight">
+                <span
+                  className="block shrink-0 overflow-hidden leading-tight"
+                  style={{ height: ROTULO_H, marginBottom: ROTULO_GAP }}
+                >
                   <span
                     className={`block text-[13px] font-semibold tracking-tight transition-colors ${
                       eAtivo ? "text-acc" : "text-ink-2 group-hover:text-ink"

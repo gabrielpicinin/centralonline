@@ -20,7 +20,15 @@ import {
   listarUnidades,
   lerBase,
 } from "./banco.server";
-import { exigirAdministrador, unidadesDaSessao } from "./sessao.server";
+import { exigirAdministrador, unidadesDaSessao, basesDaSessao } from "./sessao.server";
+import { BASES } from "./bases";
+
+/*
+ * A base, como chega do navegador: uma das duas, e nada mais. Qualquer outro
+ * valor é recusado aqui, antes de chegar perto do banco. Isto valida o FORMATO
+ * do pedido — quem pode ver o quê é decidido depois, em unidadesDaSessao.
+ */
+const baseSchema = z.enum(BASES);
 
 /*
  * O conteúdo das linhas não é validado campo a campo aqui. Elas vêm dos
@@ -35,10 +43,12 @@ const loteSchema = z.object({
 });
 
 export const iniciarCargaServer = createServerFn({ method: "POST" })
-  .validator((d: unknown) => z.object({ arquivos: z.array(z.string().max(300)).max(10) }).parse(d))
+  .validator((d: unknown) =>
+    z.object({ base: baseSchema, arquivos: z.array(z.string().max(300)).max(10) }).parse(d),
+  )
   .handler(async ({ data }) => {
     const sessao = await exigirAdministrador();
-    return { cargaId: iniciarCarga(data.arquivos, sessao.user ?? null) };
+    return { cargaId: iniciarCarga(data.base, data.arquivos, sessao.user ?? null) };
   });
 
 export const enviarLoteServer = createServerFn({ method: "POST" })
@@ -68,19 +78,33 @@ export const finalizarCargaServer = createServerFn({ method: "POST" })
   });
 
 /**
- * Carrega a base já recortada para quem pediu.
+ * Carrega a base pedida, já recortada para quem pediu.
  *
- * O recorte não é um argumento que o navegador manda: ele sai da sessão, aqui
- * no servidor. Se viesse do cliente, bastaria alterá-lo na requisição para ver
- * qualquer unidade.
+ * O navegador diz QUAL base quer — com dois dashboards, precisa dizer. Mas isso
+ * é um pedido, não uma autorização: as unidades saem da sessão, relidas no
+ * banco dentro da base pedida, a cada requisição. Quem pede uma base onde não
+ * tem nenhuma unidade recebe a base vazia — sem erro e sem dados. Ver a regra
+ * inteira em unidadesDaSessao.
+ *
+ * As unidades, essas, continuam fora do alcance do navegador: se viessem dele,
+ * bastaria alterá-las na requisição para ver qualquer uma.
  */
-export const carregarBaseServer = createServerFn({ method: "GET" }).handler(async () => {
-  const unidades = await unidadesDaSessao();
-  return lerBase(unidades);
-});
+export const carregarBaseServer = createServerFn({ method: "GET" })
+  .validator((d: unknown) => z.object({ base: baseSchema }).parse(d))
+  .handler(async ({ data }) => {
+    const unidades = await unidadesDaSessao(data.base);
+    return lerBase(data.base, unidades);
+  });
 
-/** Estado para a tela do administrador: a carga atual e o universo de unidades. */
-export const estadoServer = createServerFn({ method: "GET" }).handler(async () => {
-  await exigirAdministrador();
-  return { carga: cargaAtiva(), unidades: listarUnidades() };
-});
+/** As bases que a sessão pode abrir — para a tela de escolha e o alternador. */
+export const basesDaSessaoServer = createServerFn({ method: "GET" }).handler(async () => ({
+  bases: await basesDaSessao(),
+}));
+
+/** Estado para a tela do administrador: a carga atual e o universo de unidades de uma base. */
+export const estadoServer = createServerFn({ method: "GET" })
+  .validator((d: unknown) => z.object({ base: baseSchema }).parse(d))
+  .handler(async ({ data }) => {
+    await exigirAdministrador();
+    return { carga: cargaAtiva(data.base), unidades: listarUnidades(data.base) };
+  });
