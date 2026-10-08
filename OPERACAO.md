@@ -280,17 +280,31 @@ cada leitura é de uma base só.
 cor dele. Enviar um não toca no outro: substituir o Brasil deixa Angola como
 estava, e vice-versa.
 
-| Bloco  | Arquivos                                                                   |
-| ------ | -------------------------------------------------------------------------- |
-| Brasil | Financeiro (obrigatório), membresia e saldo (opcionais).                   |
-| Angola | Só o financeiro, enquanto membresia e saldo não existirem por lá.          |
+Os dois blocos são iguais: **financeiro** (obrigatório), **membresia** e **saldo**
+(opcionais), com as mesmas regras. O que vale é o que foi enviado em cada carga
+— o sistema não supõe que uma base tenha ou não tenha membresia ou saldo.
 
-**Arquivo trocado é recusado.** A planilha de Angola diz "Central Angola" em
-todas as linhas da coluna "Descrição CR. 1º Nível"; a do Brasil, em nenhuma. Um
-arquivo no bloco errado é recusado com uma mensagem que diz isso, **antes de
-qualquer linha sair do navegador** — a base que está no servidor fica intacta.
-O mesmo vale para uma planilha sem as colunas essenciais: a mensagem lista as
-que faltam.
+**Cada envio substitui a base inteira.** O que não vier no envio deixa de
+aparecer no dashboard: mandar só o financeiro tira a membresia e o saldo que
+estavam lá. Por isso, quando a base no servidor tem membresia ou saldo e o envio
+novo não traz o arquivo, a tela **avisa antes de enviar**, e o próprio botão diz
+o que vai faltar ("Substituir a base do Brasil sem a membresia"). Não impede —
+às vezes é de propósito.
+
+**Arquivo trocado é recusado.** A planilha financeira de Angola diz "Central
+Angola" em todas as linhas da coluna "Descrição CR. 1º Nível"; a do Brasil, em
+nenhuma. Um financeiro no bloco errado é recusado com uma mensagem que diz isso,
+**antes de qualquer linha sair do navegador** — a base que está no servidor fica
+intacta. O mesmo vale para uma planilha sem as colunas essenciais: a mensagem
+lista as que faltam.
+
+A membresia e o saldo são conferidos contra o financeiro do mesmo envio: se
+**nenhuma** unidade deles casar com as do financeiro, o arquivo é de outra base e
+o envio é recusado. Basta uma em comum para passar — a membresia real do Brasil
+tem congregações que o financeiro não tem, e unidades do financeiro sem linha de
+membresia. O "Total Geral" não conta. **Os nomes das unidades precisam ser
+iguais aos do financeiro** — em Angola, os do 2º nível como estão na planilha
+("Central Angola Calumbiro", e não só "Calumbiro").
 
 **Quem vê o quê.** O pastor vê as bases em que tem ao menos uma unidade marcada.
 Com uma só, entra direto no dashboard dela e não vê alternador nenhum — para
@@ -371,12 +385,16 @@ permissões_, marca as unidades dele na coluna da base certa e aperta **Salvar
 seleções** — o botão é fácil de esquecer, e sem ele nada muda. Base marcada sem
 nenhuma unidade é base que ele não vê; a tela avisa isso na própria linha.
 
-**"O envio foi recusado: 'Este arquivo não pode entrar na base…'."**
-O arquivo é do outro país — o de Angola no bloco do Brasil, ou o contrário.
-Nada foi enviado, e a base no servidor continua a mesma. Envie no bloco certo.
+**"O envio foi recusado: '… não pode entrar na base…'."**
+O arquivo é do outro país — o de Angola no bloco do Brasil, ou o contrário. Vale
+para o financeiro, a membresia e o saldo. Nada foi enviado, e a base no servidor
+continua a mesma. Envie no bloco certo.
 
-**"Os cards de membresia mostram '—'."**
-A base foi enviada sem o arquivo de membresia. Reenvie-a com ele.
+**"Os cards de membresia mostram '—'." / "O card de saldo diz que a base não foi
+carregada."**
+A base foi enviada sem esse arquivo — vale igual para as duas bases. Reenvie-a
+com ele. A tela de envio avisa antes, quando o envio vai sair sem um arquivo que
+a base atual tem.
 
 **"Angola não tem a Seção 4, nem o card de meta."**
 É o normal enquanto a planilha de Angola vier sem meta — ver _As duas bases_.

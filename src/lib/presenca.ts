@@ -1,6 +1,9 @@
 /*
  * O que a CARGA tem — e, a partir disso, o que o dashboard desenha.
  *
+ * Vale para meta, membresia e saldo. Nenhum deles é propriedade de um país:
+ * cada carga traz o que traz, e as telas seguem isso.
+ *
  * Meta não é propriedade de um país, é um fato de cada carga. Angola não tem
  * meta hoje e vai ter um dia; o Brasil tem hoje e pode, um dia, vir sem. As
  * duas bases seguem a mesma regra, e a regra lê os dados — nunca o nome da
@@ -35,6 +38,13 @@ export interface Presenca {
   metasDeAplicacao: boolean;
   /** O arquivo de membresia: ligada se a carga tiver ao menos uma linha dele. */
   membresia: boolean;
+  /**
+   * O arquivo de saldo: ligada se a carga tiver ao menos uma linha dele. O card
+   * de saldo não precisa dela — decide pelas linhas que recebe —, mas o envio
+   * precisa, para avisar quando a carga nova vai sair sem o saldo que a atual
+   * tem.
+   */
+  saldo: boolean;
 }
 
 /** Base sem carga, ou pedido sem unidade nenhuma: nada a desenhar. */
@@ -42,7 +52,56 @@ export const SEM_DADOS: Presenca = {
   metaDeDizimos: false,
   metasDeAplicacao: false,
   membresia: false,
+  saldo: false,
 };
+
+/*
+ * Membresia e saldo ausentes têm o tratamento OPOSTO ao da meta.
+ *
+ * Meta ausente é o estado normal de uma base, e o bloco some calado. Membresia
+ * ou saldo ausentes são esquecimento — um arquivo que não foi junto no envio —,
+ * e o card fica, dizendo que a base não foi carregada. Nunca zero: um "0" de
+ * membresia ou um "R$ 0,00" de dízimo per capita passariam por número real.
+ *
+ * A mesma regra para as duas bases. O que decide é o que a carga trouxe.
+ */
+export const NOTA_SEM_MEMBRESIA = "Base de membresia não carregada";
+export const AVISO_SEM_SALDO = "Base de saldo não carregada.";
+
+/**
+ * O que um card que depende de membresia mostra: o valor, ou "—" com o porquê.
+ * Vale para os três — Membresia, Dízimo per capita e Taxa de depositantes.
+ */
+export function cardDeMembresia(
+  presenca: Presenca,
+  valorFormatado: string,
+): { valor: string; nota?: string } {
+  return presenca.membresia ? { valor: valorFormatado } : { valor: "—", nota: NOTA_SEM_MEMBRESIA };
+}
+
+/** O aviso do card de saldo, ou nulo quando há saldo para mostrar. */
+export function avisoDoCardDeSaldo(linhasDeSaldo: readonly unknown[]): string | null {
+  return linhasDeSaldo.length ? null : AVISO_SEM_SALDO;
+}
+
+/**
+ * O que um envio apaga sem querer.
+ *
+ * Cada envio é uma carga inteira: o que não vier nele deixa de existir no
+ * dashboard. Se a carga que está no servidor tem membresia e o envio novo não
+ * traz o arquivo, a membresia some — e o mesmo com o saldo. Isto lista o que
+ * vai sumir, para a tela avisar ANTES. Não impede: às vezes é de propósito.
+ */
+export function oQueOEnvioApaga(
+  atual: Presenca | null,
+  envio: { membresia: boolean; saldo: boolean },
+): ("membresia" | "saldo")[] {
+  if (!atual) return [];
+  const some: ("membresia" | "saldo")[] = [];
+  if (atual.membresia && !envio.membresia) some.push("membresia");
+  if (atual.saldo && !envio.saldo) some.push("saldo");
+  return some;
+}
 
 /*
  * A regra do (A).

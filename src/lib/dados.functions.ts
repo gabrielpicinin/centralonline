@@ -19,6 +19,7 @@ import {
   cargaAtiva,
   listarUnidades,
   lerBase,
+  presencaDaCargaAtiva,
 } from "./banco.server";
 import { exigirAdministrador, unidadesDaSessao, basesDaSessao } from "./sessao.server";
 import { BASES } from "./bases";
@@ -101,10 +102,18 @@ export const basesDaSessaoServer = createServerFn({ method: "GET" }).handler(asy
   bases: await basesDaSessao(),
 }));
 
-/** Estado para a tela do administrador: a carga atual e o universo de unidades de uma base. */
+/**
+ * Estado para a tela do administrador: a carga atual de uma base, o universo de
+ * unidades dela, e o que a carga tem — para o envio avisar quando a carga nova
+ * vai sair sem a membresia ou o saldo que a atual tem.
+ */
 export const estadoServer = createServerFn({ method: "GET" })
   .validator((d: unknown) => z.object({ base: baseSchema }).parse(d))
   .handler(async ({ data }) => {
     await exigirAdministrador();
-    return { carga: cargaAtiva(data.base), unidades: listarUnidades(data.base) };
+    return {
+      carga: cargaAtiva(data.base),
+      unidades: listarUnidades(data.base),
+      presenca: presencaDaCargaAtiva(data.base),
+    };
   });

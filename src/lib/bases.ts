@@ -11,10 +11,11 @@
  * adivinhar ou se encher de `if (base === "angola")`. Quem precisar mudar uma
  * regra de uma base muda aqui, e o lugar é um só.
  *
- * O que NÃO é declarado aqui, de propósito: se a base tem meta. Isso não é uma
- * propriedade do país, é um fato de cada carga — Angola não tem meta hoje e
- * vai ter um dia, e nesse dia tem de funcionar sem mexer em código. Quem
- * decide é src/lib/presenca.ts, a partir dos dados.
+ * O que NÃO é declarado aqui, de propósito: se a base tem meta, membresia ou
+ * saldo. Isso não é propriedade do país, é fato de cada carga — o que veio no
+ * envio. Angola não tem meta hoje e vai ter um dia; o saldo dela também não
+ * existe ainda. Nesse dia tem de funcionar sem mexer em código. Quem decide é
+ * src/lib/presenca.ts, a partir dos dados.
  *
  * Este arquivo é puro — sem node:, sem React — porque é lido dos dois lados: o
  * navegador o usa ao interpretar a planilha no envio, e o servidor, ao validar
@@ -86,16 +87,6 @@ export interface DeclaracaoBase {
     unidade: string;
     data: string;
   };
-
-  /*
-   * Os arquivos opcionais que esta base aceita no envio, além do financeiro.
-   *
-   * Angola ainda não tem membresia nem saldo, e o bloco dela na tela de envio
-   * mostra só o financeiro. Quando esses arquivos existirem lá, liga-se aqui —
-   * depois de conferir se as colunas deles são as mesmas do Brasil, porque o
-   * parser de membresia e o de saldo ainda não sabem de base nenhuma.
-   */
-  arquivos: { membresia: boolean; saldo: boolean };
 
   /*
    * O que identifica a planilha desta base. O envio é RECUSADO se o arquivo
@@ -201,7 +192,6 @@ export const DECLARACOES: Record<Base, DeclaracaoBase> = {
       unidade: "Descrição CR. 1º Nível",
       data: "Data",
     },
-    arquivos: { membresia: true, saldo: true },
     assinatura: { coluna: "Descrição CR. 1º Nível", valor: "Central Angola", exige: "nenhuma" },
     metaAproximada: true,
     metasDeAplicacao: METAS_DE_APLICACAO_DA_CENTRAL,
@@ -221,7 +211,6 @@ export const DECLARACOES: Record<Base, DeclaracaoBase> = {
       unidade: "Descrição CR. 2º Nível",
       data: "Dt. Baixa",
     },
-    arquivos: { membresia: false, saldo: false },
     assinatura: { coluna: "Descrição CR. 1º Nível", valor: "Central Angola", exige: "todas" },
     metaAproximada: false,
     metasDeAplicacao: METAS_DE_APLICACAO_DA_CENTRAL,

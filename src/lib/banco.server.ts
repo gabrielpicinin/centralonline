@@ -1176,5 +1176,18 @@ function presencaDaCarga(c: DatabaseSync, cargaId: number): Presenca {
       .prepare("SELECT 1 FROM lancamentos WHERE carga_id = ? AND TRIM(meta) <> '' LIMIT 1")
       .get(cargaId),
     membresia: !!c.prepare("SELECT 1 FROM membresia WHERE carga_id = ? LIMIT 1").get(cargaId),
+    saldo: !!c.prepare("SELECT 1 FROM saldos WHERE carga_id = ? LIMIT 1").get(cargaId),
   };
+}
+
+/**
+ * O que a carga ATIVA de uma base tem, ou nulo se a base ainda não tem carga.
+ *
+ * Para a tela de envio: ela avisa, antes de enviar, quando a carga nova vai
+ * sair sem a membresia ou o saldo que a atual tem — cada envio substitui a
+ * carga inteira, e o que não vier nele deixa de aparecer.
+ */
+export function presencaDaCargaAtiva(base: Base): Presenca | null {
+  const carga = cargaAtiva(base);
+  return carga ? presencaDaCarga(conectar(), carga.id) : null;
 }

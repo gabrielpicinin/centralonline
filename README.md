@@ -71,12 +71,19 @@ erro e sem dados. Ver `unidadesDaSessao` em `src/lib/sessao.server.ts`.
 
 O que muda de uma base para a outra é **declarado** em `src/lib/bases.ts`, e não
 adivinhado pelo código: a coluna de unidade (Brasil no 1º nível, Angola no 2º),
-a coluna de data, a assinatura que recusa o arquivo trocado, a moeda, os
-arquivos que o envio aceita, as metas percentuais da Seção 4 e as regras da
-visão consolidada. Nenhum trecho do código pergunta `base === "angola"`.
+a coluna de data, a assinatura que recusa o financeiro trocado, a moeda, as
+metas percentuais da Seção 4 e as regras da visão consolidada. Nenhum trecho do
+código pergunta `base === "angola"`.
 
-O que **não** é declarado ali é se a base tem meta: isso é fato de cada carga,
-decidido em `src/lib/presenca.ts` a partir dos dados.
+O que **não** é declarado ali é se a base tem meta, membresia ou saldo: isso é
+fato de cada carga, decidido em `src/lib/presenca.ts` a partir dos dados. O
+envio aceita os três arquivos nas duas bases.
+
+Membresia e saldo não têm assinatura própria — a membresia real do Brasil tem
+até uma linha "Central Angola". O que os prende à base é ter **ao menos uma
+unidade em comum** com o financeiro do mesmo envio; nenhuma em comum é arquivo
+de outra base, e o envio é recusado (`conferirArquivosDoEnvio` em
+`src/lib/parsers.ts`, com o porquê do critério).
 
 No banco, a base está em `cargas` e em `permissoes`; lançamentos, membresia,
 saldos e metas a herdam pela carga. Bancos criados antes das duas bases são
@@ -175,6 +182,7 @@ testes.
 | `testes/migracao.test.ts`   | A migração para duas bases não perde uma linha, em cada esquema antigo. |
 | `testes/planilhas.test.ts`  | Cada planilha é lida pela base certa; o arquivo trocado é recusado.    |
 | `testes/metas.test.ts`      | Os blocos de meta aparecem e somem pelos dados da carga.               |
+| `testes/membresia-saldo.test.ts` | Membresia e saldo ausentes viram "—" e aviso, nunca zero; os de outra base são recusados. |
 | `testes/moeda.test.ts`      | O real sai idêntico ao de antes; o kwanza, com `Kz`.                   |
 | os demais                   | Visão consolidada, senha visível, origem do login.                     |
 

@@ -14,7 +14,14 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/appState";
-import { normalizeFinancial, normalizeMembership, normalizeSaldo, parseFile } from "@/lib/parsers";
+import {
+  conferirArquivosDoEnvio,
+  normalizeFinancial,
+  normalizeMembership,
+  normalizeSaldo,
+  parseFile,
+} from "@/lib/parsers";
+import { oQueOEnvioApaga, type Presenca } from "@/lib/presenca";
 import { enviarBases } from "@/lib/enviarBase";
 import { estadoServer } from "@/lib/dados.functions";
 import { DECLARACOES, type Base } from "@/lib/bases";
@@ -122,17 +129,30 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
    */
   const [baseAtual, setBaseAtual] = useState<EstadoBase | null>(null);
   /*
+   * O que a carga que está no servidor tem — para avisar, antes do envio, o que
+   * vai sumir. Nulo quando a base ainda não tem carga: aí não há o que perder.
+   */
+  const [presencaAtual, setPresencaAtual] = useState<Presenca | null>(null);
+  /*
    * O resultado do último envio, com o aviso de metas. Fica na tela até o
    * próximo envio: o administrador decide quando abrir o dashboard.
    */
   const [enviada, setEnviada] = useState<{ linhas: number; semMetaExata: string[] } | null>(null);
   const [erroAoAbrir, setErroAoAbrir] = useState("");
 
-  useEffect(() => {
+  const lerEstado = useCallback(() => {
     void estadoServer({ data: { base } })
-      .then((e) => setBaseAtual(e.carga))
-      .catch(() => setBaseAtual(null));
+      .then((e) => {
+        setBaseAtual(e.carga);
+        setPresencaAtual(e.presenca);
+      })
+      .catch(() => {
+        setBaseAtual(null);
+        setPresencaAtual(null);
+      });
   }, [base]);
+
+  useEffect(() => lerEstado(), [lerEstado]);
 
   const abrirDashboard = useCallback(async () => {
     setErroAoAbrir("");
@@ -145,10 +165,11 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
   }, [abrirBase, base, d.nomeComDe, setStep]);
 
   /*
-   * Só o financeiro é obrigatório. Membresia e saldo são opcionais nas duas
-   * bases: sem membresia, os três cards que dependem dela mostram "—" e dizem
-   * que a base não foi carregada; sem saldo, o card de saldo diz o mesmo. Um
-   * zero que passasse por número real seria pior que a ausência declarada.
+   * Só o financeiro é obrigatório. Membresia e saldo são opcionais — nas duas
+   * bases, com as mesmas regras: sem membresia, os três cards que dependem dela
+   * mostram "—" e dizem que a base não foi carregada; sem saldo, o card de
+   * saldo diz o mesmo. Um zero que passasse por número real seria pior que a
+   * ausência declarada.
    */
   const enviar = useCallback(async () => {
     if (!financeiroFile) return;
@@ -179,6 +200,13 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
           'Base de saldo sem linhas válidas — confira as colunas "Período" e "Saldo Acumulado"',
         );
       }
+      /*
+       * Membresia e saldo não têm assinatura própria: o que os liga à base é ter
+       * unidade em comum com o financeiro deste mesmo envio. Nenhuma em comum é
+       * arquivo de outra base, e o envio é recusado aqui, antes de qualquer
+       * linha sair do navegador. Ver o critério em conferirArquivosDoEnvio.
+       */
+      conferirArquivosDoEnvio({ base, financeiro: fin.rows, membresia: mem, saldo: sal });
       const resumo = await enviarBases(
         {
           base,
@@ -194,6 +222,8 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
         setProgresso,
       );
       setBaseAtual(resumo);
+      // Relê o que a carga nova tem: é contra ela que o próximo envio vai ser avisado.
+      lerEstado();
       setEnviada({ linhas: resumo.linhas, semMetaExata: fin.unidadesSemMetaExata });
       setFinanceiro(null);
       setMembresia(null);
@@ -205,11 +235,31 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
       setLoading(false);
       setProgresso(0);
     }
-  }, [financeiroFile, membresiaFile, saldoFile, base, onEnviada]);
+  }, [financeiroFile, membresiaFile, saldoFile, base, onEnviada, lerEstado]);
 
-  const opcionais = [d.arquivos.membresia && "membresia", d.arquivos.saldo && "saldo"].filter(
-    Boolean,
-  );
+  /*
+   * O que este envio vai apagar sem querer: a carga atual tem membresia (ou
+   * saldo) e o envio não traz o arquivo. Cada envio substitui a carga INTEIRA,
+   * então o que não vier deixa de aparecer no dashboard. Não impede — às vezes
+   * é de propósito —, mas não deixa acontecer sem a pessoa ver: o aviso aparece
+   * antes do envio, e o próprio botão diz o que vai faltar.
+   */
+  const vaiSumir = financeiroFile
+    ? oQueOEnvioApaga(presencaAtual, { membresia: !!membresiaFile, saldo: !!saldoFile })
+    : [];
+  const oQueSome =
+    vaiSumir.length === 2
+      ? "a membresia e o saldo"
+      : vaiSumir[0] === "saldo"
+        ? "o saldo"
+        : "a membresia";
+  // O que acontece na tela, dito com o sujeito certo: o saldo tem um card só.
+  const consequencia =
+    vaiSumir.length === 2
+      ? "os dois deixam de aparecer no dashboard, e os cards deles passam a dizer que a base não foi carregada"
+      : vaiSumir[0] === "saldo"
+        ? "o saldo deixa de aparecer no dashboard, e o card dele passa a dizer que a base não foi carregada"
+        : "a membresia deixa de aparecer no dashboard, e os três cards dela passam a dizer que a base não foi carregada";
 
   return (
     <motion.section
@@ -260,11 +310,11 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
       </div>
 
       <div className="p-6">
-        <div
-          className={`grid gap-5 ${
-            opcionais.length === 2 ? "md:grid-cols-2 lg:grid-cols-3" : "md:grid-cols-2"
-          }`}
-        >
+        {/*
+         * Os três campos nas duas bases. Nada aqui diz que uma base não tem
+         * membresia ou saldo: o que vale é o que foi enviado em cada carga.
+         */}
+        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           <DropZone
             label={`Financeiro — ${d.nome}`}
             hint="Planilha financeira (obrigatória)"
@@ -273,38 +323,22 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
             onFile={setFinanceiro}
             cor={cor}
           />
-          {d.arquivos.membresia && (
-            <DropZone
-              label={`Membresia — ${d.nome}`}
-              hint="Membresia mensal por unidade (opcional)"
-              icon={<Users className="h-6 w-6" />}
-              file={membresiaFile}
-              onFile={setMembresia}
-              cor={cor}
-            />
-          )}
-          {d.arquivos.saldo && (
-            <DropZone
-              label={`Saldo — ${d.nome}`}
-              hint="Saldo acumulado por centro de resultado (opcional)"
-              icon={<Scale className="h-6 w-6" />}
-              file={saldoFile}
-              onFile={setSaldo}
-              cor={cor}
-            />
-          )}
-          {/*
-           * O espaço preparado: a base ainda não tem membresia nem saldo, e o
-           * bloco diz isso em vez de esconder. Quando os arquivos existirem,
-           * liga-se `arquivos` em src/lib/bases.ts e as caixas aparecem aqui.
-           */}
-          {opcionais.length === 0 && (
-            <div className="flex min-h-[200px] items-center justify-center rounded-2xl border border-line-soft bg-panel-2/40 p-8 text-center text-sm text-ink-3">
-              Membresia e saldo {d.nomeComDe} ainda não existem.
-              <br />
-              Quando existirem, entram neste bloco.
-            </div>
-          )}
+          <DropZone
+            label={`Membresia — ${d.nome}`}
+            hint="Membresia mensal por unidade (opcional)"
+            icon={<Users className="h-6 w-6" />}
+            file={membresiaFile}
+            onFile={setMembresia}
+            cor={cor}
+          />
+          <DropZone
+            label={`Saldo — ${d.nome}`}
+            hint="Saldo acumulado por centro de resultado (opcional)"
+            icon={<Scale className="h-6 w-6" />}
+            file={saldoFile}
+            onFile={setSaldo}
+            cor={cor}
+          />
         </div>
 
         {err && (
@@ -363,6 +397,20 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
           </div>
         )}
 
+        {vaiSumir.length > 0 && !loading && (
+          <div className="mt-6 flex gap-2.5 rounded-lg border border-[#E9B949]/40 bg-[#E9B949]/[.08] p-4 text-sm text-ink-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 translate-y-0.5 text-[#E9B949]" />
+            <p>
+              <span className="font-semibold text-ink">
+                A base {d.nomeComDe} que está no servidor tem {oQueSome}, e este envio não traz{" "}
+                {vaiSumir.length === 2 ? "esses arquivos" : "esse arquivo"}.
+              </span>{" "}
+              Cada envio substitui a base inteira: ao enviar assim, {consequencia}. Para manter,
+              inclua {vaiSumir.length === 2 ? "os arquivos" : "o arquivo"} acima.
+            </p>
+          </div>
+        )}
+
         <div className="mt-6 flex justify-end">
           <Button
             disabled={!financeiroFile || loading}
@@ -374,7 +422,7 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
             {loading
               ? "Enviando…"
               : baseAtual
-                ? `Substituir a base ${d.nomeComDe}`
+                ? `Substituir a base ${d.nomeComDe}${vaiSumir.length ? ` sem ${oQueSome}` : ""}`
                 : `Enviar a base ${d.nomeComDe}`}
           </Button>
         </div>

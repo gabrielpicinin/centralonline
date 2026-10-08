@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { fmtPct, MESES } from "@/lib/format";
 import { useBaseAtiva } from "@/lib/baseAtiva";
-import { desenha, type Presenca } from "@/lib/presenca";
+import { avisoDoCardDeSaldo, cardDeMembresia, desenha, type Presenca } from "@/lib/presenca";
 import { ficaForaDoConsolidado } from "@/lib/consolidado";
 import {
   classifyNat3,
@@ -152,7 +152,8 @@ function CustomTooltip({ active, payload, label }: any) {
  * saldo acumulado.
  */
 function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
-  const { moeda, declaracao } = useBaseAtiva();
+  const { moeda } = useBaseAtiva();
+  const aviso = avisoDoCardDeSaldo(saldo);
   const { abertura, atual, temAtual } = useMemo(() => {
     let soma = 0;
     let achouAtual = false;
@@ -212,16 +213,17 @@ function CardSaldo({ saldo }: { saldo: SaldoRow[] }) {
         Saldo Centro de Resultado
       </span>
 
-      {saldo.length === 0 ? (
+      {aviso ? (
+        /*
+         * A mesma frase nas duas bases: o que decide é a carga ter vindo sem o
+         * arquivo de saldo, nunca o país. A segunda linha dizia "Arquivo 3",
+         * nome que a tela de envio não usa desde que passou a ter um bloco por
+         * base — lá o campo se chama "Saldo".
+         */
         <p className="pb-1 text-center text-[12.5px] leading-snug text-ink-3">
-          Base de saldo não carregada.
-          {/* Só onde há um Arquivo 3 para enviar: o bloco de Angola ainda não tem. */}
-          {declaracao.arquivos.saldo && (
-            <>
-              <br />
-              Envie o Arquivo 3 na tela anterior.
-            </>
-          )}
+          {aviso}
+          <br />
+          Envie o arquivo de saldo em “Bases e permissões”.
         </p>
       ) : (
         <div className="w-full space-y-1">
@@ -731,10 +733,18 @@ export function Section1Total({
              * "—" e dizem por quê. Ausência declarada, e não um zero que
              * passaria por número real — o mesmo trato do card de saldo. É o
              * oposto da meta, que some calada: membresia ausente é esquecimento,
-             * e o aviso ajuda a lembrar.
+             * e o aviso ajuda a lembrar. A decisão é de cardDeMembresia
+             * (src/lib/presenca.ts), a mesma que os testes conferem.
              */
-            const semMembresia = !presenca.membresia;
-            const nota = semMembresia ? "Base de membresia não carregada" : undefined;
+            const perCaptaCard = cardDeMembresia(presenca, moeda.formatar(perCapta));
+            const membresiaCard = cardDeMembresia(presenca, membMedia.toLocaleString("pt-BR"));
+            const taxaCard = cardDeMembresia(
+              presenca,
+              taxaDep.toLocaleString("pt-BR", {
+                minimumFractionDigits: 1,
+                maximumFractionDigits: 1,
+              }) + "%",
+            );
             const cards = [
               <MiniKpi
                 key="dizimos"
@@ -771,16 +781,16 @@ export function Section1Total({
                 key="percapta"
                 icon={<User />}
                 label="Dízimo per Capta"
-                value={semMembresia ? "—" : moeda.formatar(perCapta)}
-                nota={nota}
+                value={perCaptaCard.valor}
+                nota={perCaptaCard.nota}
                 delay={4}
               />,
               <MiniKpi
                 key="membresia"
                 icon={<Users />}
                 label="Membresia"
-                value={semMembresia ? "—" : membMedia.toLocaleString("pt-BR")}
-                nota={nota}
+                value={membresiaCard.valor}
+                nota={membresiaCard.nota}
                 delay={5}
               />,
               <MiniKpi
@@ -794,15 +804,8 @@ export function Section1Total({
                 key="taxa"
                 icon={<Percent />}
                 label="Taxa de Depositantes"
-                value={
-                  semMembresia
-                    ? "—"
-                    : taxaDep.toLocaleString("pt-BR", {
-                        minimumFractionDigits: 1,
-                        maximumFractionDigits: 1,
-                      }) + "%"
-                }
-                nota={nota}
+                value={taxaCard.valor}
+                nota={taxaCard.nota}
                 delay={7}
               />,
             ].filter(Boolean);

@@ -571,6 +571,71 @@ export function normalizeMembership(rows: RawRow[]): MembershipRow[] {
     .filter((r) => r.unidade);
 }
 
+/**
+ * Membresia e saldo conferidos contra o financeiro do MESMO envio. Recusa o
+ * arquivo que parece ser de outra base.
+ *
+ * A assinatura protege o financeiro ("Central Angola" no 1º nível), mas não
+ * serve aqui: a membresia do Brasil tem uma linha "Central Angola" — a regra do
+ * financeiro recusaria a planilha certa. O que liga a membresia e o saldo à base
+ * é a relação com o financeiro: as unidades. Uma membresia do Brasil no bloco de
+ * Angola não daria erro nenhum — só não encontraria unidade, e os três cards
+ * sairiam zerados ou vazios. Dado errado em silêncio.
+ *
+ * O critério é "PELO MENOS UMA unidade casa" — e não "todas", nem "a maioria".
+ * O porquê está nos números reais de setembro do Brasil: a membresia tem 30
+ * unidades e só 16 estão na financeira (há congregações sem lançamento, e
+ * unidades da financeira sem linha de membresia); o saldo tem 21, e todas estão.
+ * Trocados de país, membresia e saldo casam ZERO. "Todas" recusaria o arquivo
+ * certo; "a maioria" ficaria no limite com o Brasil real; "pelo menos uma"
+ * separa os dois casos com folga.
+ *
+ * O "Total Geral" da membresia não conta: existe nas duas bases e não é
+ * unidade. O casamento ignora acento, maiúscula e espaço nas pontas — a mesma
+ * comparação que o dashboard usa para achar a membresia de uma unidade.
+ *
+ * A mesma regra nas duas bases, sem caminho especial: só a base dá o nome que
+ * aparece na mensagem.
+ */
+export function conferirArquivosDoEnvio(envio: {
+  base: Base;
+  financeiro: readonly FinancialRow[];
+  membresia: readonly MembershipRow[];
+  saldo: readonly SaldoRow[];
+}): void {
+  const daFinanceira = new Map<string, string>();
+  for (const r of envio.financeiro) if (r.unidade) daFinanceira.set(norm(r.unidade), r.unidade);
+  const exemplos = (lista: string[]) =>
+    lista
+      .slice(0, 3)
+      .map((u) => `"${u}"`)
+      .join(", ") + (lista.length > 3 ? "…" : "");
+
+  const conferir = (arquivo: "membresia" | "saldo", nomes: string[]) => {
+    if (!nomes.length) return; // o arquivo não veio neste envio
+    const unidades = [
+      ...new Set(nomes.map((u) => u.trim()).filter((u) => u && norm(u) !== "total geral")),
+    ];
+    if (unidades.some((u) => daFinanceira.has(norm(u)))) return;
+    throw new PlanilhaRecusada(
+      `O arquivo de ${arquivo} não pode entrar na base ${DECLARACOES[envio.base].nome}: nenhuma ` +
+        `das unidades dele casa com as da planilha financeira deste envio — parece ser de outra ` +
+        `base. No arquivo de ${arquivo}: ${
+          unidades.length ? exemplos(unidades) : "nenhuma unidade além do Total Geral"
+        }; na financeira: ${exemplos([...daFinanceira.values()].sort())}. Nada foi enviado, e a ` +
+        `base que está no servidor continua a mesma. Confira se os arquivos não foram trocados.`,
+    );
+  };
+  conferir(
+    "membresia",
+    envio.membresia.map((r) => r.unidade),
+  );
+  conferir(
+    "saldo",
+    envio.saldo.map((r) => r.unidade),
+  );
+}
+
 export function membershipForMonth(
   rows: MembershipRow[],
   unidade: string | "Total Geral",
