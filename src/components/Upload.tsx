@@ -20,6 +20,8 @@ import {
   normalizeMembership,
   normalizeSaldo,
   parseFile,
+  resumoDaMembresia,
+  type ResumoDaMembresia,
 } from "@/lib/parsers";
 import { oQueOEnvioApaga, type Presenca } from "@/lib/presenca";
 import { enviarBases } from "@/lib/enviarBase";
@@ -109,6 +111,41 @@ interface EstadoBase {
 const COR_DA_BASE: Record<Base, string> = { brasil: "#3DB07A", angola: "#9B87F5" };
 
 /**
+ * O resumo da membresia, depois do envio. Neutro de propósito — sem ícone, sem
+ * cor de aviso: é informação para conferir, não problema a resolver. No Brasil
+ * toda carga tem unidades que não casam (as congregações sem lançamento), e um
+ * alerta que aparece sempre deixa de ser lido. O que ele pega é o nome errado:
+ * "Calumbiro" na lista do que não casou, no lugar de "Central Angola Calumbiro".
+ */
+function ResumoMembresia({ resumo, nomeComDe }: { resumo: ResumoDaMembresia; nomeComDe: string }) {
+  const { unidades, casaram, naoCasaram, total } = resumo;
+  return (
+    <div className="mt-3 space-y-1 text-ink-2">
+      <p>
+        {unidades === 0
+          ? "Membresia: nenhuma linha por unidade no arquivo."
+          : `Membresia: ${unidades} ${unidades === 1 ? "unidade" : "unidades"} no arquivo, ` +
+            `${casaram} ${casaram === 1 ? "casou" : "casaram"} com a base financeira.`}
+      </p>
+      {naoCasaram.length > 0 && (
+        <p className="text-xs">
+          Não {naoCasaram.length === 1 ? "casou" : "casaram"}:{" "}
+          <span className="font-mono">{naoCasaram.join(" · ")}</span>
+        </p>
+      )}
+      <p className="text-xs">
+        {"linha" in total
+          ? `O total ${nomeComDe} vem da linha “${total.linha}”.`
+          : `Sem linha de total no arquivo, o total ${nomeComDe} é a soma ` +
+            (total.soma === 1
+              ? "da unidade que casou."
+              : `das ${total.soma} unidades que casaram.`)}
+      </p>
+    </div>
+  );
+}
+
+/**
  * O envio de UMA base: os arquivos dela, o estado dela no servidor, e o botão
  * que substitui só ela. Enviar o Brasil não toca em Angola, e vice-versa — no
  * servidor, cada carga é de uma base e só desativa e poda as da mesma base.
@@ -134,10 +171,15 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
    */
   const [presencaAtual, setPresencaAtual] = useState<Presenca | null>(null);
   /*
-   * O resultado do último envio, com o aviso de metas. Fica na tela até o
-   * próximo envio: o administrador decide quando abrir o dashboard.
+   * O resultado do último envio, com o aviso de metas e o resumo da membresia.
+   * Fica na tela até o próximo envio: o administrador decide quando abrir o
+   * dashboard.
    */
-  const [enviada, setEnviada] = useState<{ linhas: number; semMetaExata: string[] } | null>(null);
+  const [enviada, setEnviada] = useState<{
+    linhas: number;
+    semMetaExata: string[];
+    membresia: ResumoDaMembresia | null;
+  } | null>(null);
   const [erroAoAbrir, setErroAoAbrir] = useState("");
 
   const lerEstado = useCallback(() => {
@@ -207,6 +249,10 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
        * linha sair do navegador. Ver o critério em conferirArquivosDoEnvio.
        */
       conferirArquivosDoEnvio({ base, financeiro: fin.rows, membresia: mem, saldo: sal });
+      // O que casou e o que não casou, para conferir depois do envio — ver resumoDaMembresia.
+      const resumoMembresia = mem.length
+        ? resumoDaMembresia({ base, financeiro: fin.rows, membresia: mem })
+        : null;
       const resumo = await enviarBases(
         {
           base,
@@ -224,7 +270,11 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
       setBaseAtual(resumo);
       // Relê o que a carga nova tem: é contra ela que o próximo envio vai ser avisado.
       lerEstado();
-      setEnviada({ linhas: resumo.linhas, semMetaExata: fin.unidadesSemMetaExata });
+      setEnviada({
+        linhas: resumo.linhas,
+        semMetaExata: fin.unidadesSemMetaExata,
+        membresia: resumoMembresia,
+      });
       setFinanceiro(null);
       setMembresia(null);
       setSaldo(null);
@@ -352,6 +402,9 @@ function BlocoDeEnvio({ base, onEnviada }: { base: Base; onEnviada: () => void }
             <p className="font-semibold text-ink">
               Base {d.nomeComDe} atualizada: {enviada.linhas.toLocaleString("pt-BR")} lançamentos.
             </p>
+            {enviada.membresia && (
+              <ResumoMembresia resumo={enviada.membresia} nomeComDe={d.nomeComDe} />
+            )}
             {/*
              * O aviso de meta, para sempre. Só aparece quando a planilha TEM meta
              * e alguma unidade ficou sem coluna de nome idêntico — sem meta

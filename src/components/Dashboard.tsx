@@ -373,6 +373,7 @@ export function Dashboard() {
             ano={ano}
             unidadesSel={uniSel}
             mesesSel={mesSel}
+            unidades={unidades}
           />
         ),
       },

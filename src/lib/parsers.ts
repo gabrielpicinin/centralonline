@@ -2,7 +2,7 @@
  * Com a extensão `.ts`: os testes carregam este arquivo direto no Node — ver o
  * comentário em src/lib/consolidado.ts.
  */
-import { DECLARACOES, type Base, type DeclaracaoBase } from "./bases.ts";
+import { DECLARACOES, identidadeDaBase, type Base, type DeclaracaoBase } from "./bases.ts";
 import { temMetaDeDizimos } from "./presenca.ts";
 
 export type RawRow = Record<string, unknown>;
@@ -571,16 +571,61 @@ export function normalizeMembership(rows: RawRow[]): MembershipRow[] {
     .filter((r) => r.unidade);
 }
 
+/*
+ * As linhas de TOTAL de um arquivo de membresia ou saldo: as que respondem pela
+ * base inteira, e não por uma unidade.
+ *
+ * São duas. "Total Geral", o nome genérico que a planilha do Brasil usa. E a
+ * identidade da base — o nome do 1º nível, declarado em bases.ts (ver
+ * identidadeDaBase): em Angola, "Central Angola", que é como Angola mede a
+ * membresia hoje — uma linha só, o país inteiro. O Brasil não tem identidade,
+ * então lá só o "Total Geral" é total; a linha "Central Angola" que a membresia
+ * do Brasil ainda traz continua sendo uma unidade que não casa.
+ *
+ * O total por linha é regra da membresia (ver membresiaDoRecorte). O card de
+ * saldo continua somando as linhas do recorte: um saldo que trouxesse a linha
+ * do país E as unidades contaria duas vezes. Hoje esse arquivo não existe — o
+ * do Brasil é só por unidade, e Angola ainda não tem saldo.
+ */
+function ehLinhaDeTotal(nome: string, base: Base): boolean {
+  const n = norm(nome);
+  if (n === "total geral") return true;
+  const identidade = identidadeDaBase(base);
+  return identidade !== null && n === norm(identidade);
+}
+
+/** O mesmo nome uma vez só, na ordem do arquivo e na grafia da primeira linha. */
+function nomesDistintos(nomes: readonly string[]): string[] {
+  const vistos = new Map<string, string>();
+  for (const u of nomes) {
+    const t = u.trim();
+    if (t && !vistos.has(norm(t))) vistos.set(norm(t), t);
+  }
+  return [...vistos.values()];
+}
+
 /**
  * Membresia e saldo conferidos contra o financeiro do MESMO envio. Recusa o
  * arquivo que parece ser de outra base.
  *
- * A assinatura protege o financeiro ("Central Angola" no 1º nível), mas não
- * serve aqui: a membresia do Brasil tem uma linha "Central Angola" — a regra do
- * financeiro recusaria a planilha certa. O que liga a membresia e o saldo à base
- * é a relação com o financeiro: as unidades. Uma membresia do Brasil no bloco de
- * Angola não daria erro nenhum — só não encontraria unidade, e os três cards
- * sairiam zerados ou vazios. Dado errado em silêncio.
+ * Uma membresia do Brasil no bloco de Angola não daria erro nenhum por si — só
+ * não encontraria unidade, e os cards sairiam zerados. Dado errado em silêncio.
+ * Daí a conferência, com a mesma regra nas duas bases e nos dois arquivos:
+ *
+ *  - Se o arquivo traz linhas de UNIDADE, pelo menos uma tem de casar com uma
+ *    unidade da financeira. São as unidades que dizem de qual base ele é.
+ *  - Se não traz nenhuma — só linha de total —, ele entra quando o total é a
+ *    identidade da base. É o arquivo de Angola de hoje, inteiro: uma linha,
+ *    "Central Angola".
+ *  - "Total Geral" sozinho nunca basta: existe nos arquivos das duas bases e
+ *    não diz de qual é.
+ *
+ * Por que a identidade não salva um arquivo cujas unidades não casam: a
+ * membresia do Brasil TEM uma linha "Central Angola" — a mesma de Angola,
+ * extraída. Se a identidade bastasse sempre, a membresia do Brasil entraria no
+ * bloco de Angola: 29 unidades do Brasil gravadas na carga de Angola, e o total
+ * certo só por acaso. Quando há unidades para conferir, a conferência é por
+ * elas. A Central decidiu assim em 08/10.
  *
  * O critério é "PELO MENOS UMA unidade casa" — e não "todas", nem "a maioria".
  * O porquê está nos números reais de setembro do Brasil: a membresia tem 30
@@ -588,14 +633,13 @@ export function normalizeMembership(rows: RawRow[]): MembershipRow[] {
  * unidades da financeira sem linha de membresia); o saldo tem 21, e todas estão.
  * Trocados de país, membresia e saldo casam ZERO. "Todas" recusaria o arquivo
  * certo; "a maioria" ficaria no limite com o Brasil real; "pelo menos uma"
- * separa os dois casos com folga.
+ * separa os dois casos com folga. Nomes misturados no detalhamento de Angola
+ * ("Central Angola Sede" numa linha, "Calumbiro" noutra) passam por aqui — é o
+ * resumo do envio que os mostra (ver resumoDaMembresia).
  *
- * O "Total Geral" da membresia não conta: existe nas duas bases e não é
- * unidade. O casamento ignora acento, maiúscula e espaço nas pontas — a mesma
- * comparação que o dashboard usa para achar a membresia de uma unidade.
- *
- * A mesma regra nas duas bases, sem caminho especial: só a base dá o nome que
- * aparece na mensagem.
+ * O casamento ignora acento, maiúscula e espaço nas pontas — a mesma comparação
+ * que o dashboard usa para achar a membresia de uma unidade. Nada aqui é
+ * especial de uma base: a diferença entre elas vem toda de bases.ts.
  */
 export function conferirArquivosDoEnvio(envio: {
   base: Base;
@@ -603,6 +647,8 @@ export function conferirArquivosDoEnvio(envio: {
   membresia: readonly MembershipRow[];
   saldo: readonly SaldoRow[];
 }): void {
+  const { nome, nomeComDe } = DECLARACOES[envio.base];
+  const identidade = identidadeDaBase(envio.base);
   const daFinanceira = new Map<string, string>();
   for (const r of envio.financeiro) if (r.unidade) daFinanceira.set(norm(r.unidade), r.unidade);
   const exemplos = (lista: string[]) =>
@@ -610,20 +656,34 @@ export function conferirArquivosDoEnvio(envio: {
       .slice(0, 3)
       .map((u) => `"${u}"`)
       .join(", ") + (lista.length > 3 ? "…" : "");
+  const recusa = (arquivo: string, motivo: string) =>
+    new PlanilhaRecusada(
+      `O arquivo de ${arquivo} não pode entrar na base ${nome}: ${motivo}. Nada foi enviado, e ` +
+        `a base que está no servidor continua a mesma. Confira se os arquivos não foram trocados.`,
+    );
 
   const conferir = (arquivo: "membresia" | "saldo", nomes: string[]) => {
     if (!nomes.length) return; // o arquivo não veio neste envio
-    const unidades = [
-      ...new Set(nomes.map((u) => u.trim()).filter((u) => u && norm(u) !== "total geral")),
-    ];
-    if (unidades.some((u) => daFinanceira.has(norm(u)))) return;
-    throw new PlanilhaRecusada(
-      `O arquivo de ${arquivo} não pode entrar na base ${DECLARACOES[envio.base].nome}: nenhuma ` +
-        `das unidades dele casa com as da planilha financeira deste envio — parece ser de outra ` +
-        `base. No arquivo de ${arquivo}: ${
-          unidades.length ? exemplos(unidades) : "nenhuma unidade além do Total Geral"
-        }; na financeira: ${exemplos([...daFinanceira.values()].sort())}. Nada foi enviado, e a ` +
-        `base que está no servidor continua a mesma. Confira se os arquivos não foram trocados.`,
+    const linhas = nomesDistintos(nomes);
+    const deUnidade = linhas.filter((u) => !ehLinhaDeTotal(u, envio.base));
+
+    if (deUnidade.length) {
+      if (deUnidade.some((u) => daFinanceira.has(norm(u)))) return;
+      throw recusa(
+        arquivo,
+        `nenhuma das unidades dele casa com as da planilha financeira deste envio — parece ser ` +
+          `de outra base. No arquivo de ${arquivo}: ${exemplos(deUnidade)}; na financeira: ` +
+          exemplos([...daFinanceira.values()].sort()),
+      );
+    }
+
+    // Sem nenhuma unidade: só a identidade da base diz de quem é o total.
+    if (identidade && linhas.some((u) => norm(u) === norm(identidade))) return;
+    throw recusa(
+      arquivo,
+      `ele não tem nenhuma unidade além do Total Geral, e o Total Geral sozinho não diz de ` +
+        `qual base o arquivo é` +
+        (identidade ? ` (o total ${nomeComDe} sozinho viria numa linha "${identidade}")` : ""),
     );
   };
   conferir(
@@ -636,37 +696,162 @@ export function conferirArquivosDoEnvio(envio: {
   );
 }
 
+const ABREV_DOS_MESES = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+];
+
+/** O número de uma linha de membresia num mês ("set/26" ou "set/2026"). */
+function valorDoMes(r: MembershipRow, ano: number, mes: number): number {
+  const m = ABREV_DOS_MESES[mes - 1];
+  return r.meses[`${m}/${String(ano).slice(-2)}`] ?? r.meses[`${m}/${ano}`] ?? 0;
+}
+
+/**
+ * A membresia de UMA unidade num mês: a linha de nome igual, ou zero.
+ *
+ * Só unidade. O total da base não sai daqui — ele tem regra própria, e quem a
+ * conhece é membresiaDoRecorte. Já houve aqui um "Total Geral" que, sem a
+ * linha, somava TODAS as linhas do arquivo; ver lá por que isso está errado.
+ */
 export function membershipForMonth(
-  rows: MembershipRow[],
-  unidade: string | "Total Geral",
+  rows: readonly MembershipRow[],
+  unidade: string,
   ano: number,
   mes: number,
 ): number {
-  const abrev = [
-    "jan",
-    "fev",
-    "mar",
-    "abr",
-    "mai",
-    "jun",
-    "jul",
-    "ago",
-    "set",
-    "out",
-    "nov",
-    "dez",
-  ];
-  const yy = String(ano).slice(-2);
-  const k1 = `${abrev[mes - 1]}/${yy}`;
-  const k2 = `${abrev[mes - 1]}/${ano}`;
-  const get = (r: MembershipRow) => r.meses[k1] ?? r.meses[k2] ?? 0;
-  if (unidade === "Total Geral") {
-    const tg = rows.find((r) => norm(r.unidade) === "total geral");
-    if (tg) return get(tg);
-    return rows.reduce((s, r) => s + get(r), 0);
+  const alvo = norm(unidade);
+  const found = rows.find((r) => norm(r.unidade) === alvo);
+  return found ? valorDoMes(found, ano, mes) : 0;
+}
+
+/**
+ * A linha que responde pelo total da base, se o arquivo tiver uma: a de nome
+ * igual à identidade da base ("Central Angola") ou a "Total Geral".
+ *
+ * Com as duas no mesmo arquivo, a identidade vem primeiro: o nome da base é
+ * específico dela, o "Total Geral" é genérico. Num arquivo da própria base as
+ * duas dizem o mesmo número; se um dia disserem números diferentes, a que fala
+ * da base pelo nome é a que vale para ela.
+ */
+export function linhaDeTotalDaMembresia(
+  rows: readonly MembershipRow[],
+  base: Base,
+): MembershipRow | null {
+  const identidade = identidadeDaBase(base);
+  if (identidade) {
+    const alvo = norm(identidade);
+    const daBase = rows.find((r) => norm(r.unidade) === alvo);
+    if (daBase) return daBase;
   }
-  const found = rows.find((r) => norm(r.unidade) === norm(unidade));
-  return found ? get(found) : 0;
+  return rows.find((r) => norm(r.unidade) === "total geral") ?? null;
+}
+
+/**
+ * A membresia de um recorte de unidades num mês — o denominador dos três cards
+ * de membresia e da tabela do Acumulado Diário.
+ *
+ * Com uma seleção de unidades, é a soma das linhas delas. Unidade sem linha
+ * conta zero, e zero é o número verdadeiro: as unidades da financeira do Brasil
+ * sem linha de membresia (Colégio Central, Filiais, Central Social, Light
+ * Church…) não têm congregação. Decisão da Central, 08/10.
+ *
+ * Com TODAS as unidades — a visão "Total Geral" —, vale a regra que ninguém
+ * pode simplificar:
+ *
+ *     A LINHA EXPLÍCITA DE TOTAL MANDA. NA FALTA DELA, SOMA DAS UNIDADES.
+ *     Nunca o contrário: a soma nunca substitui a linha.
+ *
+ * Por quê, com os números reais de setembro do Brasil. A linha "Total Geral"
+ * diz 25.432. Somar TODAS as linhas do arquivo dá 28.602: a linha "Central
+ * Angola" (3.170) está lá e não é do Brasil. Somar só as unidades da
+ * financeira dá 24.352: o Total Geral inclui congregações que ainda não têm
+ * lançamento (Brumado, Caxias, Sete Lagoas… 1.080 membros). Nenhuma soma
+ * reproduz o número que a própria planilha declara — trocar a linha pela soma
+ * "para simplificar" erra o Brasil para cima ou para baixo, conforme a soma.
+ *
+ * As três formas de arquivo, pela mesma regra, sem nada declarado por base —
+ * quem decide é o que veio na carga, como nas metas:
+ *  1. Só o total. É Angola hoje: uma linha, "Central Angola". O total é a
+ *     linha; uma unidade filtrada não tem linha e conta zero.
+ *  2. Total e unidades. É o Brasil hoje: "Total Geral" e 30 linhas. O total é
+ *     a linha; cada unidade usa a sua.
+ *  3. Só unidades. É Angola quando o detalhamento chegar. Sem linha de total,
+ *     o total é a soma das unidades da financeira — as que o dashboard mostra;
+ *     uma linha de nome que não casa fica fora, e aparece no resumo do envio.
+ *     Sem esta forma, o Total Geral de Angola zeraria no dia em que o arquivo
+ *     viesse sem a linha do país.
+ *
+ * O pastor nunca recebe linha de total (ver lerBase): para ele, "todas" cai na
+ * soma das unidades dele, que é o número certo para o recorte dele.
+ */
+export function membresiaDoRecorte(
+  rows: readonly MembershipRow[],
+  recorte: { todas: boolean; unidades: readonly string[] },
+  base: Base,
+  ano: number,
+  mes: number,
+): number {
+  if (recorte.todas) {
+    const total = linhaDeTotalDaMembresia(rows, base);
+    if (total) return valorDoMes(total, ano, mes);
+  }
+  return recorte.unidades.reduce((s, u) => s + membershipForMonth(rows, u, ano, mes), 0);
+}
+
+/** O que a tela de envio mostra sobre a membresia enviada. Informação, não aviso. */
+export interface ResumoDaMembresia {
+  /** Linhas de unidade no arquivo — as de total não entram na conta. */
+  unidades: number;
+  /** Quantas delas casaram com uma unidade da financeira do mesmo envio. */
+  casaram: number;
+  /** As que não casaram, na ordem do arquivo. */
+  naoCasaram: string[];
+  /** De onde sai o total da base: a linha de total, se houver; senão, a soma. */
+  total: { linha: string } | { soma: number };
+}
+
+/**
+ * O resumo da membresia de um envio, para quem enviou conferir.
+ *
+ * Existe para o erro que não dá recusa: o detalhamento de Angola chegando com
+ * nomes misturados — "Central Angola Sede" numa linha, "Calumbiro" noutra. A
+ * conferência aceita, porque uma unidade casou, e as outras apareceriam
+ * zeradas no dashboard sem ninguém saber por quê. Com a lista do que não casou
+ * na tela, quem enviou reconhece o nome errado na hora.
+ *
+ * É neutro de propósito, sem tom de alerta: toda carga do Brasil tem unidades
+ * que não casam (as congregações sem lançamento), e aviso que aparece sempre
+ * deixa de ser lido.
+ */
+export function resumoDaMembresia(envio: {
+  base: Base;
+  financeiro: readonly FinancialRow[];
+  membresia: readonly MembershipRow[];
+}): ResumoDaMembresia {
+  const daFinanceira = new Set(envio.financeiro.map((r) => norm(r.unidade)));
+  const deUnidade = nomesDistintos(envio.membresia.map((r) => r.unidade)).filter(
+    (u) => !ehLinhaDeTotal(u, envio.base),
+  );
+  const naoCasaram = deUnidade.filter((u) => !daFinanceira.has(norm(u)));
+  const casaram = deUnidade.length - naoCasaram.length;
+  const linha = linhaDeTotalDaMembresia(envio.membresia, envio.base);
+  return {
+    unidades: deUnidade.length,
+    casaram,
+    naoCasaram,
+    total: linha ? { linha: linha.unidade } : { soma: casaram },
+  };
 }
 
 /**

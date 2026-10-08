@@ -82,8 +82,19 @@ envio aceita os três arquivos nas duas bases.
 Membresia e saldo não têm assinatura própria — a membresia real do Brasil tem
 até uma linha "Central Angola". O que os prende à base é ter **ao menos uma
 unidade em comum** com o financeiro do mesmo envio; nenhuma em comum é arquivo
-de outra base, e o envio é recusado (`conferirArquivosDoEnvio` em
-`src/lib/parsers.ts`, com o porquê do critério).
+de outra base, e o envio é recusado. Um arquivo sem unidade nenhuma entra
+quando a linha de total tem a **identidade** da base — o 1º nível que a
+assinatura "todas" declara, "Central Angola" (`identidadeDaBase` em
+`src/lib/bases.ts`); o Brasil não tem identidade, porque a assinatura dele é uma
+proibição. Ver `conferirArquivosDoEnvio` em `src/lib/parsers.ts`, com o porquê
+do critério.
+
+O total da membresia segue uma regra só, em `membresiaDoRecorte`: **a linha
+explícita de total manda; na falta dela, soma das unidades.** Nunca o contrário
+— no Brasil, nenhuma soma reproduz a linha "Total Geral" (o comentário da função
+tem os números). É o que deixa os três formatos de arquivo funcionarem sem
+código novo: só o total (Angola hoje), total e unidades (Brasil), só unidades
+(Angola quando o detalhamento chegar).
 
 No banco, a base está em `cargas` e em `permissoes`; lançamentos, membresia,
 saldos e metas a herdam pela carga. Bancos criados antes das duas bases são
@@ -182,7 +193,7 @@ testes.
 | `testes/migracao.test.ts`   | A migração para duas bases não perde uma linha, em cada esquema antigo. |
 | `testes/planilhas.test.ts`  | Cada planilha é lida pela base certa; o arquivo trocado é recusado.    |
 | `testes/metas.test.ts`      | Os blocos de meta aparecem e somem pelos dados da carga.               |
-| `testes/membresia-saldo.test.ts` | Membresia e saldo ausentes viram "—" e aviso, nunca zero; os de outra base são recusados. |
+| `testes/membresia-saldo.test.ts` | Membresia e saldo ausentes viram "—" e aviso, nunca zero; os de outra base são recusados; o total da membresia vem da linha explícita e só sem ela da soma — Angola de hoje (uma linha) e de amanhã (por unidade) pela mesma regra. |
 | `testes/moeda.test.ts`      | O real sai idêntico ao de antes; o kwanza, com `Kz`.                   |
 | os demais                   | Visão consolidada, senha visível, origem do login.                     |
 

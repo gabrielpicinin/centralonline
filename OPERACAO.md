@@ -298,13 +298,37 @@ nenhuma. Um financeiro no bloco errado é recusado com uma mensagem que diz isso
 intacta. O mesmo vale para uma planilha sem as colunas essenciais: a mensagem
 lista as que faltam.
 
-A membresia e o saldo são conferidos contra o financeiro do mesmo envio: se
-**nenhuma** unidade deles casar com as do financeiro, o arquivo é de outra base e
-o envio é recusado. Basta uma em comum para passar — a membresia real do Brasil
-tem congregações que o financeiro não tem, e unidades do financeiro sem linha de
-membresia. O "Total Geral" não conta. **Os nomes das unidades precisam ser
-iguais aos do financeiro** — em Angola, os do 2º nível como estão na planilha
-("Central Angola Calumbiro", e não só "Calumbiro").
+A membresia e o saldo são conferidos contra o financeiro do mesmo envio. Se o
+arquivo tem linhas de unidade, **pelo menos uma** precisa casar com as do
+financeiro — senão ele é de outra base, e o envio é recusado. Basta uma em comum
+para passar: a membresia real do Brasil tem congregações que o financeiro não
+tem, e unidades do financeiro sem linha de membresia. O "Total Geral" sozinho não
+prova nada, porque existe nas duas bases. Um arquivo **sem nenhuma unidade** só
+entra se a linha de total tiver o nome da base — em Angola, "Central Angola", que
+é a membresia de Angola hoje: uma linha só, o país inteiro. A membresia do Brasil
+continua recusada no bloco de Angola mesmo com a linha "Central Angola" que ela
+ainda traz, porque as unidades dela não casam com as de Angola.
+
+**Os nomes das unidades precisam ser iguais aos do financeiro** — em Angola, os
+do 2º nível como estão na planilha ("Central Angola Calumbiro", e não só
+"Calumbiro").
+
+**O total da membresia.** Sem filtro de unidade, vale a linha de total da
+planilha — "Total Geral", ou o nome da base ("Central Angola") — e, **só na falta
+dela**, a soma das unidades que casam com o financeiro. Nunca o contrário: no
+Brasil, em setembro, a linha diz 25.432; somar todas as linhas daria 28.602 (a
+linha "Central Angola" está no arquivo), e somar só as do financeiro daria 24.352
+(o Total Geral inclui congregações ainda sem lançamento). Com essa regra, os três
+formatos de arquivo funcionam sem atualizar o sistema: só o total (Angola hoje),
+total e unidades (Brasil hoje) e só unidades (Angola, quando o detalhamento
+chegar). Uma unidade sem linha na membresia aparece com zero no filtro.
+
+**Resumo da membresia no envio.** Depois de enviar, a tela mostra quantas
+unidades o arquivo tem, quantas casaram com o financeiro, a lista das que não
+casaram e de onde saiu o total. É informação, não aviso — no Brasil, a lista
+sempre traz as congregações sem lançamento. Serve para pegar nome errado:
+"Calumbiro" na lista é uma unidade que vai aparecer zerada até o arquivo ser
+corrigido e reenviado.
 
 **Quem vê o quê.** O pastor vê as bases em que tem ao menos uma unidade marcada.
 Com uma só, entra direto no dashboard dela e não vê alternador nenhum — para
@@ -388,7 +412,16 @@ nenhuma unidade é base que ele não vê; a tela avisa isso na própria linha.
 **"O envio foi recusado: '… não pode entrar na base…'."**
 O arquivo é do outro país — o de Angola no bloco do Brasil, ou o contrário. Vale
 para o financeiro, a membresia e o saldo. Nada foi enviado, e a base no servidor
-continua a mesma. Envie no bloco certo.
+continua a mesma. Envie no bloco certo. Na membresia e no saldo, a mesma recusa
+pega o arquivo em que **nenhum** nome de unidade bate com o financeiro, e o que
+só traz a linha "Total Geral". A mensagem mostra nomes dos dois lados: se o
+arquivo é do país certo, corrija os nomes e reenvie.
+
+**"Uma unidade aparece com membresia zero."**
+A membresia não tem linha com o nome exato dela. Confira o resumo que aparece
+depois do envio: o nome estará entre os que não casaram. Corrija a planilha e
+reenvie. As unidades do financeiro que não têm congregação (Colégio Central,
+Filiais, Light Church…) aparecem com zero de propósito — é o número certo.
 
 **"Os cards de membresia mostram '—'." / "O card de saldo diz que a base não foi
 carregada."**

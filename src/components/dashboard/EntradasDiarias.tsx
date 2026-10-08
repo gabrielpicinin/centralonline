@@ -19,7 +19,7 @@ import { useBaseAtiva } from "@/lib/baseAtiva";
 import { desenha, type Presenca } from "@/lib/presenca";
 import {
   isDizimosOfertas,
-  membershipForMonth,
+  membresiaDoRecorte,
   norm,
   type FinancialRow,
   type MembershipRow,
@@ -386,15 +386,16 @@ export function EntradasDiarias({
 
   const membPorMes = useMemo(() => {
     /*
-     * Com tudo marcado, lê a linha "Total Geral" da planilha em vez de somar as
-     * unidades — é o número que a própria base declara, e ele nem sempre bate
-     * com a soma: uma unidade ausente da planilha de membresia sumiria da conta.
+     * Com tudo marcado, vale a linha de total da planilha — "Total Geral", ou o
+     * nome da base, como "Central Angola" —, e só sem ela a soma das unidades.
+     * É o número que a própria base declara, e no Brasil nenhuma soma o
+     * reproduz. A regra mora em membresiaDoRecorte, a mesma da Seção 1.
      */
-    const alvos = todasUnidades ? ["Total Geral"] : unis;
+    const recorte = { todas: todasUnidades, unidades: unis };
     return Array.from({ length: 12 }, (_, m) =>
-      alvos.reduce((s, u) => s + membershipForMonth(membership, u, ano, m + 1), 0),
+      membresiaDoRecorte(membership, recorte, base, ano, m + 1),
     );
-  }, [membership, ano, todasUnidades, unis.join("|")]);
+  }, [membership, ano, todasUnidades, unis.join("|"), base]);
 
   const anoAntPorMes = useMemo(() => {
     const arr = Array(12).fill(0);

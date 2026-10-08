@@ -101,6 +101,9 @@ export interface DeclaracaoBase {
    * "Central Angola" no 1º nível é a assinatura porque está em todas as linhas
    * de Angola e em nenhuma do Brasil. Não dá para usar a presença da coluna do
    * 2º nível: o Brasil também a tem.
+   *
+   * A mesma declaração dá o nome da base inteira, para a membresia e o saldo —
+   * ver identidadeDaBase, no fim deste arquivo.
    */
   assinatura: {
     coluna: string;
@@ -220,3 +223,25 @@ export const DECLARACOES: Record<Base, DeclaracaoBase> = {
     },
   },
 };
+
+/**
+ * O nome que responde pela base inteira, quando ela tem um: o 1º nível que está
+ * em TODAS as linhas do financeiro dela. Em Angola, "Central Angola".
+ *
+ * Não é declaração nova: é a assinatura, lida de outro jeito. Uma assinatura
+ * "todas" diz que aquele nome está em cada linha da base — então ele É a base.
+ * Uma assinatura "nenhuma" diz o contrário: o nome está PROIBIDO ali. É o caso
+ * do Brasil, e por isso o Brasil não tem identidade.
+ *
+ * Ler o `valor` sem olhar o `exige` seria o erro: "Central Angola" viraria o
+ * nome do Brasil, e a linha "Central Angola" que a membresia do Brasil traz
+ * passaria a ser o total do Brasil — 3.170 membros no lugar de 25.432.
+ *
+ * Quem usa (ver parsers.ts): a conferência da membresia e do saldo, em que este
+ * nome é assinatura bastante para um arquivo que não traz unidades; e o total da
+ * membresia, em que a linha com este nome vale pela base inteira.
+ */
+export function identidadeDaBase(base: Base): string | null {
+  const { valor, exige } = DECLARACOES[base].assinatura;
+  return exige === "todas" ? valor : null;
+}

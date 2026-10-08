@@ -36,7 +36,7 @@ import { ficaForaDoConsolidado } from "@/lib/consolidado";
 import {
   classifyNat3,
   isDizimosOfertas,
-  membershipForMonth,
+  membresiaDoRecorte,
   norm,
   type FinancialRow,
   type MembershipRow,
@@ -76,6 +76,11 @@ interface Props {
   ano: number;
   unidadesSel: string[]; // vazio = todas (Total Geral)
   mesesSel: number[]; // vazio = todos
+  /**
+   * Todas as unidades que quem está olhando pode ver. Com nenhum filtro, a
+   * membresia sem linha de total é a soma delas — ver membresiaDoRecorte.
+   */
+  unidades: string[];
 }
 
 const BLUE = "#2E9BC7"; // entradas / crédito e barras que batem a meta
@@ -314,6 +319,7 @@ export function Section1Total({
   ano,
   unidadesSel,
   mesesSel,
+  unidades,
 }: Props) {
   // Miniatura na trilha não anima: ver nota em secaoAtiva.tsx.
   const animarGraficos = useAnimarGraficos();
@@ -436,19 +442,22 @@ export function Section1Total({
   const totalDizimos = agregados.dizimos;
   const eventosDepositos = agregados.eventos;
 
-  // Membresia (sum across selected months for the selected units) and média
+  /*
+   * Membresia somada nos meses selecionados, e a média por mês com dado. Qual
+   * número vale para o total — a linha da planilha ou a soma das unidades — é
+   * decidido em membresiaDoRecorte, e só lá: o Acumulado Diário usa a mesma.
+   */
   const { membTotal, membMedia } = useMemo(() => {
     let total = 0;
     let nWith = 0;
-    const units = isAll ? ["Total Geral"] : unidadesSel;
+    const recorte = { todas: isAll, unidades: isAll ? unidades : unidadesSel };
     for (const m of mesesAtivos) {
-      let mTotal = 0;
-      for (const u of units) mTotal += membershipForMonth(membership, u, ano, m);
+      const mTotal = membresiaDoRecorte(membership, recorte, base, ano, m);
       total += mTotal;
       if (mTotal > 0) nWith += 1;
     }
     return { membTotal: total, membMedia: nWith > 0 ? Math.round(total / nWith) : 0 };
-  }, [membership, isAll, unidadesSel.join("|"), ano, mesesAtivos.join(",")]);
+  }, [membership, isAll, unidadesSel.join("|"), unidades, base, ano, mesesAtivos.join(",")]);
 
   // Dízimo per Capta (média por mês selecionado) e Taxa de Depositantes
   const perCapta = membTotal > 0 ? Math.trunc((totalDizimos / membTotal) * 100) / 100 : 0;
