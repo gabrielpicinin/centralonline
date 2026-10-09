@@ -67,6 +67,14 @@ a cada requisição as unidades permitidas são relidas no banco **dentro da bas
 pedida**. Quem pede uma base onde não tem unidade recebe a base vazia — sem
 erro e sem dados. Ver `unidadesDaSessao` em `src/lib/sessao.server.ts`.
 
+**Todas as unidades é a base inteira.** Se a lista de um pastor cobre todas as
+unidades da carga lida, `lerBase` entrega a base inteira, como ao administrador
+— com as linhas de total —, e marca `baseInteira`. É isso, e não o papel, que
+liga a visão consolidada no dashboard (`ehVisaoConsolidada` em
+`src/lib/consolidado.ts`): esse pastor vê os números do Financeiro, sem ganhar
+nenhuma tela ou permissão. A conferência é feita dentro de `lerBase`, contra a
+mesma carga que vai ser lida, e refeita a cada leitura.
+
 ## As duas bases
 
 O que muda de uma base para a outra é **declarado** em `src/lib/bases.ts`, e não
@@ -189,6 +197,7 @@ testes.
 | Arquivo                     | O que garante                                                          |
 | --------------------------- | ---------------------------------------------------------------------- |
 | `testes/recorte.test.ts`    | Um pastor nunca recebe uma unidade que não é dele.                     |
+| `testes/visao-por-perfil.test.ts` | Pastor com todas as unidades vê os números do Financeiro; a meta da Central Picos - Missões fica fora das somas. |
 | `testes/bases.test.ts`      | As duas bases nunca se misturam; enviar ou podar uma não toca a outra. |
 | `testes/migracao.test.ts`   | A migração para duas bases não perde uma linha, em cada esquema antigo. |
 | `testes/planilhas.test.ts`  | Cada planilha é lida pela base certa; o arquivo trocado é recusado.    |

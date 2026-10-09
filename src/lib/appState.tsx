@@ -42,6 +42,13 @@ interface AppState {
   metaAnualTotalGeral: number;
   /** O que a carga aberta tem — decide quais blocos existem. Ver src/lib/presenca.ts. */
   presenca: Presenca;
+  /*
+   * Se o servidor entregou a base INTEIRA — ao administrador, ou ao pastor com
+   * todas as unidades dela. Liga a visão consolidada (ver ehVisaoConsolidada em
+   * src/lib/consolidado.ts). É o servidor quem decide, a cada leitura; aqui só
+   * se desenha o que ele mandou.
+   */
+  baseInteira: boolean;
   /** Pergunta ao servidor quais bases esta sessão abre, e guarda a resposta. */
   carregarBasesDaSessao: () => Promise<Base[]>;
   /**
@@ -71,6 +78,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [metaAnualPorUnidade, setMetaAnual] = useState<Record<string, number>>({});
   const [metaAnualTotalGeral, setMetaAnualTotal] = useState(0);
   const [presenca, setPresenca] = useState<Presenca>(SEM_DADOS);
+  const [baseInteira, setBaseInteira] = useState(false);
 
   /*
    * O número do pedido mais recente de abrir uma base.
@@ -122,6 +130,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setMetaAnual(lida.metaAnualPorUnidade);
       setMetaAnualTotal(lida.metaAnualTotalGeral);
       setPresenca(lida.presenca);
+      setBaseInteira(lida.baseInteira);
       return { vazio: financial.length === 0 };
     } finally {
       if (meu === ultimoPedido.current) setAbrindo(null);
@@ -189,6 +198,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMetaAnual({});
     setMetaAnualTotal(0);
     setPresenca(SEM_DADOS);
+    setBaseInteira(false);
     setStepRaw("login");
   };
 
@@ -210,6 +220,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         metaAnualPorUnidade,
         metaAnualTotalGeral,
         presenca,
+        baseInteira,
         carregarBasesDaSessao,
         abrirBase,
         signOut,

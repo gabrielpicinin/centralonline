@@ -337,6 +337,27 @@ login e troca pelo alternador no canto superior direito. O Financeiro usa o
 mesmo alternador. O dashboard de Angola mostra os valores em kwanza
 (`Kz 1.234,56`).
 
+**Pastor com todas as unidades.** Quem tem **todas** as unidades de uma base
+marcadas vê os mesmos números do Financeiro: Receita e Despesa Total sem
+Central Missionária e Central Social, a membresia e a meta pela linha "Total
+Geral" da planilha, o "Débito 2" das duas metas na Seção 4 — e o título "Total
+Geral". Só os números — ele continua pastor e não vê a tela de bases e
+permissões. A conferência é unidade por unidade, com o nome exato: uma
+permissão antiga, de unidade que saiu da base, não substitui uma que falta.
+Com uma unidade a menos,
+volta à soma simples das unidades dele. Atenção ao enviar uma base com unidade
+nova: quem tinha todas passa a ter quase todas, até a nova ser marcada também.
+
+**Meta da Central Picos - Missões.** A Meta de Dízimo dela não entra em soma de
+unidades: nem para o pastor que a tem (sozinha ou com outras), nem para o
+Financeiro ou quem vê todas com unidades filtradas. Ela só conta dentro do
+Total Geral da planilha, com todas — ou nenhuma — unidades marcadas. (Sem essa
+regra, ela pegava os R$ 900 mil da Central Picos, porque a coluna dela se chama
+"Central Picos - Missão".) A regra é **permanente**: a meta verdadeira dela é
+zero, e continua fora das somas mesmo depois que o cabeçalho for corrigido. Se
+a Picos - Missões ganhar meta própria um dia, avise quem mantém o sistema — a
+regra precisa sair, senão essa meta fica de fora das somas sem aviso.
+
 **Meta aparece quando a planilha tem meta.** Não é configuração de país, é o
 que a carga trouxe:
 

@@ -868,12 +868,20 @@ export function resumoDaMembresia(envio: {
  * é desligada: "Central Angola Sede" contém "Central Angola", e a Sede sem
  * coluna de meta herdaria a meta do país inteiro. Lá, sem coluna exata, a meta
  * é zero — e a unidade aparece no aviso do envio (ver unidadesSemMetaExata).
+ *
+ * As unidades de `metaForaDasSomas` (bases.ts) saem daqui com zero, antes de
+ * qualquer busca. Toda chamada desta função é parte de uma soma de unidades —
+ * até a de uma unidade só —, e é justamente nelas que a meta não pode entrar.
+ * A Central Picos - Missões, sem isto, recebia os R$ 900 mil da Central Picos
+ * pela busca aproximada. Com todas as unidades, a meta vem do Total Geral da
+ * planilha e não passa por aqui (ver metaDeDizimosDoRecorte).
  */
 export function metaAnualDaUnidade(
   metaAnualPorUnidade: Record<string, number>,
   unidade: string,
   base: Base,
 ): number {
+  if (metaFicaForaDasSomas(unidade, base)) return 0;
   const alvo = norm(unidade);
   const entradas = Object.entries(metaAnualPorUnidade);
 
@@ -887,6 +895,42 @@ export function metaAnualDaUnidade(
     return n.includes(alvo) || alvo.includes(n);
   });
   return parciais.length === 1 ? parciais[0][1] : 0;
+}
+
+/**
+ * Se a Meta de Dízimo desta unidade fica fora das somas de unidades, nesta base
+ * — ver `metaForaDasSomas` em bases.ts. Mesma comparação do resto do
+ * dashboard: sem acento, maiúscula ou espaço nas pontas.
+ */
+export function metaFicaForaDasSomas(unidade: string, base: Base): boolean {
+  const alvo = norm(unidade);
+  return DECLARACOES[base].metaForaDasSomas.some((u) => norm(u) === alvo);
+}
+
+/**
+ * A Meta de Dízimo ANUAL de um recorte de unidades — o card "Meta de Dízimos" e
+ * o gráfico de meta da Seção 1, e as linhas de meta do Acumulado Diário. Uma
+ * regra só, para as duas seções nunca discordarem.
+ *
+ * Com todas as unidades — ou nenhuma marcada, que o Dashboard reduz ao mesmo
+ * estado —, é o total que veio do servidor: para quem vê a base inteira, a
+ * coluna "Meta Anual Total Geral" da planilha, que já considera todas as
+ * unidades, inclusive a Central Picos - Missões; para o pastor que vê parte da
+ * base, a soma das unidades dele, feita no servidor (ver lerBase).
+ *
+ * Com uma seleção, a soma das metas das escolhidas, pela meta de cada uma — e
+ * as de `metaForaDasSomas` contam zero (ver metaAnualDaUnidade).
+ */
+export function metaDeDizimosDoRecorte(
+  metas: { metaAnualPorUnidade: Record<string, number>; metaAnualTotalGeral: number },
+  recorte: { todas: boolean; unidades: readonly string[] },
+  base: Base,
+): number {
+  if (recorte.todas) return metas.metaAnualTotalGeral;
+  return recorte.unidades.reduce(
+    (s, u) => s + metaAnualDaUnidade(metas.metaAnualPorUnidade, u, base),
+    0,
+  );
 }
 
 export function isDizimosOfertas(nat2: string): boolean {

@@ -132,6 +132,33 @@ export interface DeclaracaoBase {
   metaAproximada: boolean;
 
   /*
+   * Unidades cuja Meta de Dízimo NUNCA entra numa soma de unidades. Ela só
+   * conta dentro do Total Geral — a coluna "Meta Anual Total Geral" da
+   * planilha, que é o que se lê com todas as unidades marcadas, ou nenhuma.
+   *
+   * É a Central Picos - Missões, e a regra é PERMANENTE: regra de negócio da
+   * Central (09/10), e não conserto de um erro de digitação na planilha. Ela
+   * vale para o pastor que tem a unidade, sozinha ou com outras, e para o
+   * Financeiro (ou quem vê todas as unidades) sempre que há unidades filtradas.
+   *
+   * A meta verdadeira dela é zero, e a planilha fecha sem ela: das 22 unidades
+   * do Brasil, 19 têm coluna de meta com o nome exato, e essas 19 colunas somam
+   * R$ 76.171.000 — exatamente a "Meta Anual Total Geral". A coluna dela se
+   * chama "Central Picos - Missão", no singular, e vale zero; pela busca
+   * aproximada (acima), a unidade pegava emprestados os R$ 900 mil da "Central
+   * Picos", e toda soma que a incluía contava a meta de Picos duas vezes.
+   *
+   * Por ser permanente, a regra NÃO se desliga quando a coluna passar a ter o
+   * nome exato: a meta da unidade fica fora das somas qualquer que seja o valor
+   * da coluna — inclusive um valor de verdade, que seria excluído em silêncio.
+   * ATENÇÃO:
+   * se a Picos - Missões ganhar meta própria um dia, esta regra precisa sair.
+   * Tire o nome desta lista, e junto o teste "com o cabeçalho corrigido, a
+   * regra continua", em testes/visao-por-perfil.test.ts.
+   */
+  metaForaDasSomas: readonly string[];
+
+  /*
    * As metas de aplicação da Seção 4, em porcentagem da despesa total.
    *
    * Por base, para poderem divergir sem mexer em componente. Hoje são as
@@ -141,8 +168,9 @@ export interface DeclaracaoBase {
   metasDeAplicacao: { alvos: readonly AlvoDeMeta[]; grupos: readonly GrupoDeMetas[] };
 
   /*
-   * As regras da visão consolidada — o administrador olhando a base inteira.
-   * Ver src/lib/consolidado.ts para o que cada lista faz e por quê.
+   * As regras da visão consolidada — a base inteira, sem filtro de unidade: o
+   * administrador, ou o pastor com todas as unidades marcadas. Ver
+   * src/lib/consolidado.ts para o que cada lista faz e por quê.
    *
    * São do Brasil: Central Missionária e Central Social são unidades
    * brasileiras. Angola começa sem nenhuma, e se um dia precisar de uma regra,
@@ -197,6 +225,7 @@ export const DECLARACOES: Record<Base, DeclaracaoBase> = {
     },
     assinatura: { coluna: "Descrição CR. 1º Nível", valor: "Central Angola", exige: "nenhuma" },
     metaAproximada: true,
+    metaForaDasSomas: ["Central Picos - Missões"],
     metasDeAplicacao: METAS_DE_APLICACAO_DA_CENTRAL,
     consolidado: {
       unidadesForaDosCards: ["Central Missionária", "Central Social"],
@@ -216,6 +245,7 @@ export const DECLARACOES: Record<Base, DeclaracaoBase> = {
     },
     assinatura: { coluna: "Descrição CR. 1º Nível", valor: "Central Angola", exige: "todas" },
     metaAproximada: false,
+    metaForaDasSomas: [],
     metasDeAplicacao: METAS_DE_APLICACAO_DA_CENTRAL,
     consolidado: {
       unidadesForaDosCards: [],

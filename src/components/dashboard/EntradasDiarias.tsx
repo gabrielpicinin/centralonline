@@ -23,7 +23,7 @@ import {
   norm,
   type FinancialRow,
   type MembershipRow,
-  metaAnualDaUnidade,
+  metaDeDizimosDoRecorte,
 } from "@/lib/parsers";
 
 const MESL = [
@@ -334,19 +334,22 @@ export function EntradasDiarias({
   const todasUnidades = unis.length === unidades.length && unidades.length > 0;
 
   /*
-   * Meta ANUAL do recorte de unidades. Com todas, é a coluna "Meta Anual Total
-   * Geral"; com uma seleção, a soma das colunas "Meta Anual <Unidade>". O
-   * consolidado é lido à parte, nunca somado com as unidades: ele já é a soma
-   * delas, e juntar os dois contaria tudo duas vezes.
+   * Meta ANUAL do recorte de unidades. Com todas, o total da base; com uma
+   * seleção, a soma das escolhidas — sem a Central Picos - Missões, cuja meta
+   * só conta no Total Geral. O consolidado é lido à parte, nunca somado com as
+   * unidades: ele já é a soma delas, e juntar os dois contaria tudo duas vezes.
+   * A regra mora em metaDeDizimosDoRecorte, a mesma da Seção 1.
    *
    * Fica isolado num memo porque os gráficos e a tabela "Números do período"
    * dependem do mesmo número — antes cada um tinha a sua cópia da regra.
    */
   const metaAnualDoRecorte = useMemo(
     () =>
-      todasUnidades
-        ? metaAnualTotalGeral
-        : unis.reduce((s, u) => s + metaAnualDaUnidade(metaAnualPorUnidade, u, base), 0),
+      metaDeDizimosDoRecorte(
+        { metaAnualPorUnidade, metaAnualTotalGeral },
+        { todas: todasUnidades, unidades: unis },
+        base,
+      ),
     [metaAnualPorUnidade, metaAnualTotalGeral, unis.join("|"), todasUnidades, base],
   );
 

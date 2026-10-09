@@ -14,7 +14,12 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { FinancialRow, MembershipRow, SaldoRow } from "./parsers";
+import {
+  metaFicaForaDasSomas,
+  type FinancialRow,
+  type MembershipRow,
+  type SaldoRow,
+} from "./parsers.ts";
 /*
  * Com a extensão `.ts`: os testes carregam este arquivo direto no Node, que não
  * resolve import sem extensão — e daqui sai um valor (BASES), não só um tipo.
@@ -1010,6 +1015,13 @@ export interface BaseCompleta {
   carga: ResumoCarga | null;
   /** O que a carga tem — ver src/lib/presenca.ts. Decide quais blocos existem. */
   presenca: Presenca;
+  /**
+   * Se quem pediu recebeu a base INTEIRA: o administrador, ou o pastor com
+   * todas as unidades da carga (ver lerBase). Liga a visão consolidada no
+   * dashboard — ver ehVisaoConsolidada em src/lib/consolidado.ts. Não dá poder
+   * nenhum: o papel de quem pediu continua o mesmo.
+   */
+  baseInteira: boolean;
 }
 
 const VAZIA: BaseCompleta = {
@@ -1020,7 +1032,59 @@ const VAZIA: BaseCompleta = {
   metaAnualTotalGeral: 0,
   carga: null,
   presenca: SEM_DADOS,
+  baseInteira: false,
 };
+
+/*
+ * Se a lista cobre TODAS as unidades com lançamento na carga.
+ *
+ * ESTE É O PORTÃO DA BASE INTEIRA. Quem passa aqui recebe a base sem filtro
+ * nenhum — inclusive o que não é de unidade: as linhas de total, as
+ * congregações da membresia sem lançamento. Antes desta regra, o recorte por
+ * unidade protegia até o pastor que tinha todas; agora, a proteção desse caso
+ * inteiro depende desta função. Cada escolha abaixo tem um motivo, e nenhuma
+ * pode ser "simplificada" sem ler qual é:
+ *
+ * 1. UNIDADE POR UNIDADE, NUNCA POR CONTAGEM. A pergunta é "falta alguma
+ *    unidade da carga na lista?" — e não "a lista tem tantos nomes quanto a
+ *    carga tem unidades?". Uma contagem simples (`unidades.length >=
+ *    daCarga.length`, ou o tamanho de um Set) abre a base inteira para quem NÃO
+ *    tem todas: uma permissão órfã, de unidade que saiu da base, ocupa o lugar
+ *    de uma unidade de verdade e fecha a conta — 21 unidades certas e uma
+ *    órfã dão 22 —, e o pastor passa a receber a unidade que ninguém marcou
+ *    para ele, sem erro nenhum e sem ninguém perceber. O mesmo acontece quando
+ *    uma carga nova renomeia uma unidade: o mesmo número de nomes, nomes
+ *    diferentes.
+ *
+ * 2. COMPARAÇÃO EXATA, sem tirar acento nem maiúscula. É a mesma do filtro
+ *    `unidade IN (...)` de lerBase — o recorte que este portão substitui —, e
+ *    o portão nunca pode dar mais do que aquele recorte daria, somado às linhas
+ *    de total. Se uma carga nova escrever "Central Picos - Missoes", sem
+ *    acento, a permissão "Central Picos - Missões" não casa no recorte; não
+ *    pode casar aqui. As permissões guardam o nome como a lista de unidades o
+ *    mostrou, então nome igual é o caso normal, e nome diferente pede que o
+ *    administrador marque de novo.
+ *
+ * 3. Unidade A MAIS na lista não atrapalha: a permissão órfã é sobra, não
+ *    acesso. O que decide é não faltar nenhuma unidade da carga.
+ *
+ * 4. Carga sem unidade nenhuma nunca é coberta: "todas" de nada seria verdade
+ *    por vacuidade, e entregaria o total da rede a qualquer pastor.
+ *
+ * Cada um dos quatro pontos tem teste em testes/visao-por-perfil.test.ts.
+ */
+function unidadesCobremACarga(
+  c: DatabaseSync,
+  cargaId: number,
+  unidades: readonly string[],
+): boolean {
+  const daCarga = c
+    .prepare("SELECT DISTINCT unidade FROM lancamentos WHERE carga_id = ? AND unidade <> ''")
+    .all(cargaId) as { unidade: string }[];
+  if (!daCarga.length) return false;
+  const permitidas = new Set(unidades);
+  return daCarga.every((r) => permitidas.has(r.unidade));
+}
 
 /**
  * A PORTA ÚNICA de leitura das bases. Nenhum outro trecho do projeto consulta
@@ -1031,6 +1095,9 @@ const VAZIA: BaseCompleta = {
  * "tudo", e é o que o administrador recebe. O recorte acontece aqui, no
  * servidor: o navegador do pastor nunca chega a receber uma linha das outras
  * unidades, então esconder na tela nunca fez parte do desenho.
+ *
+ * Uma lista que cobre TODAS as unidades da carga também é "tudo": quem vê
+ * todas as unidades recebe a base inteira, como o administrador (ver abaixo).
  */
 export function lerBase(base: Base, unidades: string[] | null): BaseCompleta {
   const c = conectar();
@@ -1056,8 +1123,31 @@ export function lerBase(base: Base, unidades: string[] | null): BaseCompleta {
    */
   if (unidades && unidades.length === 0) return VAZIA;
 
-  const filtro = unidades ? ` AND unidade IN (${unidades.map(() => "?").join(",")})` : "";
-  const args = unidades ? [carga.id, ...unidades] : [carga.id];
+  /*
+   * Quem vê TODAS as unidades da carga recebe a base inteira — exatamente o que
+   * o administrador recebe: as linhas de total (a "Total Geral" da membresia e
+   * a da meta, a linha do país), as congregações da membresia que ainda não têm
+   * lançamento, os lançamentos sem unidade. Decisão da Central, 09/10: o pastor
+   * com todas as unidades marcadas vê os mesmos números do Financeiro. Só os
+   * números — o papel continua de pastor; isto não abre tela nem permissão.
+   *
+   * Sem isto, o mesmo pastor via outra rede: a membresia somada só das
+   * unidades com lançamento, a meta somada coluna por coluna em vez da "Meta
+   * Anual Total Geral", e nenhuma das regras da visão consolidada.
+   *
+   * A conferência é feita AQUI, contra a carga que vai ser lida, e não antes de
+   * chamar: se uma carga nova, com uma unidade a mais, fosse ativada entre a
+   * conferência e a leitura, quem não tem essa unidade receberia a base nova
+   * inteira. E ela é refeita a cada leitura: marcar ou desmarcar uma unidade, ou
+   * uma base nova trazer uma unidade que o pastor ainda não tem, muda o
+   * resultado na hora. Como a conferência é feita — e por que não é uma
+   * contagem — está em unidadesCobremACarga, logo acima.
+   */
+  const baseInteira = unidades === null || unidadesCobremACarga(c, carga.id, unidades);
+  const recorte = baseInteira ? null : unidades;
+
+  const filtro = recorte ? ` AND unidade IN (${recorte.map(() => "?").join(",")})` : "";
+  const args = recorte ? [carga.id, ...recorte] : [carga.id];
 
   const lanc = c
     .prepare(`SELECT * FROM lancamentos WHERE carga_id = ?${filtro}`)
@@ -1084,10 +1174,10 @@ export function lerBase(base: Base, unidades: string[] | null): BaseCompleta {
 
   /*
    * A membresia tem uma linha "Total Geral" na própria planilha, e ela é o
-   * número que a Seção 2 lê quando nenhuma unidade está filtrada. Para o
-   * administrador ela vem junto; para o pastor, não — senão o denominador do
-   * dízimo per capita seria o da rede inteira contra o numerador de duas
-   * igrejas.
+   * número que a Seção 2 lê quando nenhuma unidade está filtrada. Para quem vê
+   * a base inteira ela vem junto; para o pastor que vê parte dela, não — senão
+   * o denominador do dízimo per capita seria o da rede inteira contra o
+   * numerador de duas igrejas.
    */
   const memb = c
     .prepare(`SELECT unidade, meses FROM membresia WHERE carga_id = ?${filtro}`)
@@ -1116,7 +1206,7 @@ export function lerBase(base: Base, unidades: string[] | null): BaseCompleta {
    * soma das unidades dele sem nenhum código novo: parsers.ts já cai nessa soma
    * quando a linha consolidada não chega.
    */
-  const filtroMeta = unidades ? ` AND unidade IN (${unidades.map(() => "?").join(",")})` : "";
+  const filtroMeta = recorte ? ` AND unidade IN (${recorte.map(() => "?").join(",")})` : "";
   const met = c
     .prepare(`SELECT unidade, anual FROM metas WHERE carga_id = ?${filtroMeta}`)
     .all(...args) as { unidade: string; anual: number }[];
@@ -1137,9 +1227,16 @@ export function lerBase(base: Base, unidades: string[] | null): BaseCompleta {
    * caminho pelo qual só o administrador passa, no upload. Quem lê do banco
    * nunca chega nela, e sem esta soma o card "Meta de Dízimos" do pastor
    * aparecia zerado.
+   *
+   * As unidades de `metaForaDasSomas` (bases.ts) não entram: é soma de
+   * unidades, e a meta delas só conta no Total Geral — que este pastor não vê.
+   * Hoje a coluna da Central Picos - Missões tem outro nome e nem chega aqui;
+   * no dia em que o cabeçalho for corrigido, chegaria, e entraria na soma.
    */
   if (!metaAnualTotalGeral) {
-    metaAnualTotalGeral = Object.values(metaAnualPorUnidade).reduce((s, v) => s + v, 0);
+    metaAnualTotalGeral = Object.entries(metaAnualPorUnidade)
+      .filter(([unidade]) => !metaFicaForaDasSomas(unidade, base))
+      .reduce((s, [, v]) => s + v, 0);
   }
 
   return {
@@ -1150,6 +1247,7 @@ export function lerBase(base: Base, unidades: string[] | null): BaseCompleta {
     metaAnualTotalGeral,
     carga,
     presenca: presencaDaCarga(c, carga.id),
+    baseInteira,
   };
 }
 

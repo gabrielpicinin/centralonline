@@ -41,7 +41,7 @@ import {
   type FinancialRow,
   type MembershipRow,
   type SaldoRow,
-  metaAnualDaUnidade,
+  metaDeDizimosDoRecorte,
 } from "@/lib/parsers";
 import { useAnimarGraficos } from "./secaoAtiva";
 
@@ -338,14 +338,20 @@ export function Section1Total({
   const filtered = financial;
 
   /*
-   * Meta ANUAL do recorte: com todas as unidades é a coluna "Meta Anual Total
-   * Geral" da base; com uma seleção, a soma das colunas "Meta Anual <Unidade>"
-   * das escolhidas. A mensal é essa anual dividida por 12.
+   * Meta ANUAL do recorte: com todas as unidades, o total da base; com uma
+   * seleção, a soma das escolhidas — sem a Central Picos - Missões, cuja meta
+   * só conta no Total Geral. A regra mora em metaDeDizimosDoRecorte, a mesma do
+   * Acumulado Diário. A mensal é essa anual dividida por 12.
    */
-  const metaAnual = useMemo(() => {
-    if (isAll) return metaAnualTotalGeral;
-    return unidadesSel.reduce((s, u) => s + metaAnualDaUnidade(metaAnualPorUnidade, u, base), 0);
-  }, [metaAnualPorUnidade, metaAnualTotalGeral, unidadesSel.join("|"), isAll, base]);
+  const metaAnual = useMemo(
+    () =>
+      metaDeDizimosDoRecorte(
+        { metaAnualPorUnidade, metaAnualTotalGeral },
+        { todas: isAll, unidades: unidadesSel },
+        base,
+      ),
+    [metaAnualPorUnidade, metaAnualTotalGeral, unidadesSel.join("|"), isAll, base],
+  );
 
   const metaMensal = metaAnual / 12;
   // O card mostra a meta anual como está na base, sem escalar pelo filtro de mês.

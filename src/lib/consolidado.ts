@@ -1,10 +1,11 @@
 /*
- * As duas regras da visão consolidada — o Financeiro olhando a rede inteira.
+ * As duas regras da visão consolidada — a rede inteira, sem filtro de unidade:
+ * o Financeiro, ou o pastor que vê todas as unidades da base.
  *
  * Decisões da Central. Valem SÓ nessa visão: com qualquer unidade marcada no
- * filtro, ou para qualquer pastor, tudo volta a ser a soma simples de
- * "Crédito" e "Débito", com todas as unidades do recorte. Ver `visaoConsolidada`
- * no Dashboard.
+ * filtro, ou para o pastor que vê só parte da base, tudo volta a ser a soma
+ * simples de "Crédito" e "Débito", com todas as unidades do recorte. Ver
+ * `ehVisaoConsolidada`, logo abaixo.
  *
  * ---------------------------------------------------------------------------
  * ATENÇÃO: SÃO DUAS LISTAS, E ELAS OLHAM COLUNAS DIFERENTES
@@ -56,6 +57,28 @@ const porBase = (lista: (b: Base) => readonly string[]) =>
  * erro nenhum — só mudaria milhões de reais nos números da rede, e ninguém
  * perceberia.
  */
+
+/* ======================= 0. quando a visão vale ======================= */
+
+/**
+ * Se é a visão consolidada: a base INTEIRA, sem filtro de unidade.
+ *
+ * "Base inteira" é o servidor quem diz (ver `baseInteira` em lerBase): o
+ * administrador, ou o pastor que tem TODAS as unidades da base marcadas.
+ * Decisão da Central, 09/10, no lugar da anterior ("pastor nunca"): esse
+ * pastor vê os mesmos números do Financeiro — Receita e Despesa Total sem
+ * Central Missionária e Central Social, o "Débito 2" das duas metas na Seção 4,
+ * e o resto. Só os números: o papel dele continua de pastor.
+ *
+ * Com qualquer unidade filtrada — "todas marcadas" o Dashboard já reduz a
+ * nenhuma —, ou para o pastor que vê parte da base, é a soma simples.
+ */
+export function ehVisaoConsolidada(
+  baseInteira: boolean,
+  unidadesFiltradas: readonly string[],
+): boolean {
+  return baseInteira && unidadesFiltradas.length === 0;
+}
 
 /* ============================ 1. os cards ============================ */
 

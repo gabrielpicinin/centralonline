@@ -14,6 +14,7 @@ import { MESES } from "@/lib/format";
 import { DECLARACOES } from "@/lib/bases";
 import { BaseAtivaContexto, baseAtivaDe } from "@/lib/baseAtiva";
 import { desenha } from "@/lib/presenca";
+import { ehVisaoConsolidada } from "@/lib/consolidado";
 import { LogoCentral } from "./LogoCentral";
 import { MultiSelect } from "./dashboard/MultiSelect";
 import { Section1Total } from "./dashboard/Section1Total";
@@ -77,6 +78,7 @@ export function Dashboard() {
     metaAnualPorUnidade,
     metaAnualTotalGeral,
     presenca,
+    baseInteira,
     base,
     user,
     papel,
@@ -99,17 +101,22 @@ export function Dashboard() {
   /*
    * Como chamar "nenhum filtro de unidade" nesta sessão.
    *
-   * Para o administrador é "Total Geral", porque é literalmente isso. Para o
-   * pastor seria mentira: ele não está vendo a rede, está vendo as igrejas
-   * dele, e chamar aquilo de Total Geral faria um número de duas unidades
-   * passar por número da Central inteira.
+   * Para quem vê a base inteira — o administrador, ou o pastor com todas as
+   * unidades marcadas — é "Total Geral", porque é literalmente isso: os números
+   * são os da rede, pelas regras do Financeiro. Decisão da Central, 09/10:
+   * listar as 22 unidades sobre uma Receita Total que exclui duas delas fazia o
+   * título contar uma coisa e o número outra.
+   *
+   * Para o pastor que vê parte da base seria mentira: ele não está vendo a
+   * rede, está vendo as igrejas dele, e chamar aquilo de Total Geral faria um
+   * número de duas unidades passar por número da Central inteira.
    *
    * O nome é decidido aqui, uma vez, e desce para as seções. Cada uma decidindo
    * por si é o tipo de coisa que fica divergindo com o tempo — e divergir aqui
    * significa duas telas discordando sobre o que o mesmo número representa.
    */
   const rotuloTodasUnidades = useMemo(() => {
-    if (papel !== "pastor") return "Total Geral";
+    if (papel !== "pastor" || baseInteira) return "Total Geral";
     if (unidades.length === 0) return "Nenhuma unidade";
     /*
      * Os nomes, sempre — não uma contagem. "Minhas 3 unidades" obrigaria o
@@ -118,7 +125,7 @@ export function Dashboard() {
      * reticências e o nome completo fica no title do elemento.
      */
     return unidades.join(", ");
-  }, [papel, unidades.join("|")]);
+  }, [papel, baseInteira, unidades.join("|")]);
 
   const defaultAno = anos[0] ?? new Date().getFullYear();
 
@@ -151,7 +158,8 @@ export function Dashboard() {
   const uniSel = useMemo(() => semTudo(unidadesSel, unidades.length), [unidadesSel, unidades]);
 
   /*
-   * A visão CONSOLIDADA DO ADMINISTRADOR: o Financeiro olhando a rede inteira.
+   * A visão CONSOLIDADA: a rede inteira, sem filtro de unidade — o Financeiro,
+   * ou o pastor que vê TODAS as unidades da base.
    *
    * Nela, e só nela, valem as duas regras de src/lib/consolidado.ts — cada uma
    * numa seção, cada uma olhando uma coluna diferente:
@@ -168,8 +176,12 @@ export function Dashboard() {
    * volta à soma simples: "Crédito" e "Débito", com todas as unidades do
    * recorte — inclusive as de consolidado.ts, se forem elas as marcadas.
    *
-   * Pastor nunca, nem vendo todas as unidades dele. Decisão da Central: para
-   * os pastores o dashboard fica exatamente como estava.
+   * Quem decide se é a rede inteira é o servidor (`baseInteira`, ver lerBase):
+   * o administrador, ou o pastor com todas as unidades marcadas. Decisão da
+   * Central, 09/10, no lugar da anterior ("pastor nunca"): esse pastor vê os
+   * mesmos números do Financeiro. Só os números — o papel continua de pastor,
+   * e o que é do administrador (a tela de bases) continua escondido dele. O
+   * pastor com parte das unidades fica exatamente como estava: soma simples.
    *
    * POR QUE O "DÉBITO 2" DO GRÁFICO SÓ VALE AQUI — e não mude isso sem ler: a
    * coluna "Débito 2" elimina os repasses que as unidades fazem aos fundos
@@ -187,7 +199,7 @@ export function Dashboard() {
    * unidades, com as duas metas em Débito 2). São perguntas diferentes, e os
    * números não devem ser comparados entre si.
    */
-  const visaoConsolidada = papel === "admin" && uniSel.length === 0;
+  const visaoConsolidada = ehVisaoConsolidada(baseInteira, uniSel);
   const mesSel = useMemo(() => semTudo(mesesSel.map(String), 12).map(Number), [mesesSel]);
 
   /*

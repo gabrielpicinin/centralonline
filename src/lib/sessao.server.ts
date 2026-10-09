@@ -153,6 +153,10 @@ export async function exigirSessao(): Promise<DadosSessao> {
  * O papel é reconferido no banco a cada leitura em vez de confiar no cookie.
  * Sem isso, tirar uma unidade de um pastor só valeria quando o cookie dele
  * vencesse — até sete dias depois.
+ *
+ * A lista de um pastor que cobre TODAS as unidades da base é lida por lerBase
+ * como a base inteira — os números do Financeiro. A conferência é feita lá,
+ * contra a carga que vai ser lida; aqui sai só a lista, como sempre.
  */
 export async function unidadesDaSessao(base: Base): Promise<string[] | null> {
   const dados = await exigirSessao();
