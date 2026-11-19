@@ -12,7 +12,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { ficaForaDoConsolidado, metaUsaDebito2 } from "../src/lib/consolidado.ts";
+import {
+  ehVisaoConsolidada,
+  ficaForaDoConsolidado,
+  graficoDeMetas,
+  metaUsaDebito2,
+} from "../src/lib/consolidado.ts";
 
 test("as duas unidades pedidas ficam de fora", () => {
   assert.equal(ficaForaDoConsolidado("Central Missionária", "brasil"), true);
@@ -120,4 +125,22 @@ test("Angola começa sem regra nenhuma — os mesmos nomes não acionam nada lá
     assert.equal(ficaForaDoConsolidado(nome, "angola"), false, `${nome} saiu dos cards em Angola`);
     assert.equal(metaUsaDebito2(nome, "angola"), false, `${nome} leu Débito 2 em Angola`);
   }
+});
+
+/* --------------- o título e a coluna de Meta do gráfico da Seção 4 */
+
+test("Total Geral: o gráfico é o “Acompanhamento de Metas”, com a coluna de Meta", () => {
+  // O Financeiro, ou o pastor com todas as unidades — sem filtro de unidade.
+  assert.deepEqual(graficoDeMetas(ehVisaoConsolidada(true, [])), {
+    titulo: "Acompanhamento de Metas",
+    comMeta: true,
+  });
+});
+
+test("fora do Total Geral: “Monitoramento de Despesas”, só a coluna de Realizado", () => {
+  const soRealizado = { titulo: "Monitoramento de Despesas", comMeta: false };
+  // Com unidades filtradas — inclusive para o Financeiro.
+  assert.deepEqual(graficoDeMetas(ehVisaoConsolidada(true, ["Central Contagem"])), soRealizado);
+  // O pastor que vê só parte da base, mesmo sem filtro nenhum.
+  assert.deepEqual(graficoDeMetas(ehVisaoConsolidada(false, [])), soRealizado);
 });

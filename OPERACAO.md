@@ -371,6 +371,13 @@ Sem elas, esses blocos simplesmente não aparecem, sem aviso — é o estado nor
 de Angola hoje. Quando a planilha de Angola vier com as colunas preenchidas, os
 blocos aparecem sozinhos, sem atualização do sistema.
 
+**O gráfico da Seção 4 muda com a visão.** No Total Geral — o Financeiro, ou o
+pastor com todas as unidades, sem filtro de unidade — ele é o "Acompanhamento de
+Metas", com a coluna azul de Meta ao lado do Realizado, o resumo "Meta de
+economia / Realizado" no canto e o traço da meta no tooltip. Com unidades
+filtradas, ou para o pastor que vê só parte da base, ele se chama
+"Monitoramento de Despesas" e não tem meta nenhuma: só a coluna de Realizado.
+
 **Aviso de meta no envio.** Quando a planilha tem meta e alguma unidade não tem
 coluna "Meta Anual" com **exatamente** o nome dela, o envio avisa e lista as
 unidades — não recusa. A correção é na planilha: o nome da coluna tem de ser

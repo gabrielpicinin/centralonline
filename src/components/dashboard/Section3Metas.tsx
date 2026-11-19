@@ -13,7 +13,7 @@ import {
 } from "recharts";
 import { motion } from "framer-motion";
 import { norm, type FinancialRow } from "@/lib/parsers";
-import { metaUsaDebito2 } from "@/lib/consolidado";
+import { graficoDeMetas, metaUsaDebito2 } from "@/lib/consolidado";
 import { useBaseAtiva } from "@/lib/baseAtiva";
 import { useAnimarGraficos } from "./secaoAtiva";
 
@@ -28,9 +28,11 @@ interface Props {
    */
   dizimosOfertas: number;
   /**
-   * Se é o Financeiro olhando a rede inteira. Nessa visão, as metas de
+   * Se é o Total Geral: a rede inteira, sem filtro de unidade — o Financeiro,
+   * ou o pastor que vê todas as unidades. Nessa visão, as metas de
    * METAS_EM_DEBITO_2 (src/lib/consolidado.ts) leem "Débito 2" e todas as
-   * outras leem "Débito". Fora dela, tudo lê "Débito".
+   * outras leem "Débito"; fora dela, tudo lê "Débito". E só nela o gráfico tem
+   * a coluna de Meta e o título "Acompanhamento de Metas" — ver graficoDeMetas.
    *
    * As unidades que os cards deixam de fora continuam somadas neste gráfico —
    * a regra dele é própria, e é por meta, não por unidade. Ver a nota no
@@ -110,6 +112,15 @@ const MultiLineTick = (props: any) => {
 export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: Props) {
   const { base, declaracao, moeda } = useBaseAtiva();
   const { alvos, grupos } = declaracao.metasDeAplicacao;
+  /*
+   * Título e meta: o "Acompanhamento de Metas", com tudo o que é meta, só no
+   * Total Geral; fora dele, "Monitoramento de Despesas", sem meta nenhuma. São
+   * três lugares, e os três obedecem a `comMeta`: a coluna azul (a legenda e a
+   * linha da Meta no tooltip vêm dela, e somem com ela), o resumo "Meta de
+   * economia" no canto, e o traço da meta nas réguas da aba "Relação entre
+   * Dízimos e Ofertas". Ver graficoDeMetas em src/lib/consolidado.ts.
+   */
+  const { titulo, comMeta } = graficoDeMetas(visaoConsolidada);
   /** Naturezas absorvidas por algum grupo — saem do eixo como colunas próprias. */
   const partesAgrupadas = useMemo(
     () => new Set(grupos.flatMap((g) => g.partes).map(norm)),
@@ -235,7 +246,9 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
    *
    * A meta é a mesma nas duas réguas de propósito. Ela é o alvo da categoria; o
    * que muda de uma linha para a outra é contra o que o realizado é medido, e é
-   * essa distância que a aba existe para mostrar.
+   * essa distância que a aba existe para mostrar. E ela só aparece no Total
+   * Geral (ver `comMeta`): fora dele as réguas ficam só com o realizado, e a
+   * escala deixa de reservar lugar para um traço que não vai ser desenhado.
    *
    * A escala também é compartilhada: réguas com escalas próprias colocariam as
    * duas barras em posições parecidas mesmo com valores distantes, que é o
@@ -250,11 +263,11 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
       if (!RELACAO_DIZIMOS.has(norm(r.name))) continue;
       const sobreDizimos = dizimosOfertas > 0 ? (r.abs / dizimosOfertas) * 100 : 0;
       // O 1,15 deixa folga à direita para a barra mais longa não encostar na borda.
-      const escala = Math.max(r.realizado, sobreDizimos, r.meta) * 1.15 || 1;
+      const escala = Math.max(r.realizado, sobreDizimos, comMeta ? r.meta : 0) * 1.15 || 1;
       m.set(norm(r.name), { meta: r.meta, sobreDespesa: r.realizado, sobreDizimos, escala });
     }
     return m;
-  }, [dataRows, dizimosOfertas]);
+  }, [dataRows, dizimosOfertas, comMeta]);
 
   const metaEconomia = useMemo(() => dataRows.reduce((s, r) => s + r.meta, 0), [dataRows]);
   const realizadoTotal = useMemo(() => dataRows.reduce((s, r) => s + r.realizado, 0), [dataRows]);
@@ -351,25 +364,30 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
                         background: l.cor,
                       }}
                     />
-                    <div
-                      className="absolute inset-y-[-2.5px] w-[2px] -translate-x-1/2 rounded-full"
-                      style={{
-                        left: `${((relacao.meta / relacao.escala) * 100).toFixed(2)}%`,
-                        background: TRACO_META,
-                      }}
-                    />
+                    {comMeta && (
+                      <div
+                        className="absolute inset-y-[-2.5px] w-[2px] -translate-x-1/2 rounded-full"
+                        style={{
+                          left: `${((relacao.meta / relacao.escala) * 100).toFixed(2)}%`,
+                          background: TRACO_META,
+                        }}
+                      />
+                    )}
                   </div>
                 </div>
               ))}
             </div>
 
-            <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/[.14] pt-1.5 text-[11px] text-ink-3">
-              <span
-                className="inline-block h-2.5 w-[2px] shrink-0 rounded-full"
-                style={{ background: TRACO_META }}
-              />
-              meta {fmtPct(relacao.meta)} — a mesma nas duas réguas
-            </p>
+            {/* A legenda do traço: só existe onde o traço existe, no Total Geral. */}
+            {comMeta && (
+              <p className="mt-2.5 flex items-center gap-1.5 border-t border-white/[.14] pt-1.5 text-[11px] text-ink-3">
+                <span
+                  className="inline-block h-2.5 w-[2px] shrink-0 rounded-full"
+                  style={{ background: TRACO_META }}
+                />
+                meta {fmtPct(relacao.meta)} — a mesma nas duas réguas
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -520,15 +538,24 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
         className="flex min-h-0 w-full flex-1 flex-col rounded-[10px] border border-line-soft bg-panel p-5 shadow-panel transition-colors"
       >
         <div className="relative mb-3">
-          <h3 className="text-lg font-semibold text-ink text-center">Acompanhamento de Metas</h3>
-          <div className="absolute right-0 top-0 text-xs text-ink-2 text-right space-y-0.5">
-            <p>
-              <span className="font-semibold">Meta de economia =</span> {fmtPct(100 - metaEconomia)}
-            </p>
-            <p>
-              <span className="font-semibold">Realizado =</span> {fmtPct(100 - realizadoTotal)}
-            </p>
-          </div>
+          <h3 className="text-lg font-semibold text-ink text-center">{titulo}</h3>
+          {/*
+           * O resumo de economia é a meta contra o realizado, somados: só no
+           * Total Geral, como a coluna de Meta. As duas linhas saem juntas — o
+           * "Realizado" daqui é a economia realizada, par da meta de economia, e
+           * sozinho se confundiria com o Realizado das colunas.
+           */}
+          {comMeta && (
+            <div className="absolute right-0 top-0 text-xs text-ink-2 text-right space-y-0.5">
+              <p>
+                <span className="font-semibold">Meta de economia =</span>{" "}
+                {fmtPct(100 - metaEconomia)}
+              </p>
+              <p>
+                <span className="font-semibold">Realizado =</span> {fmtPct(100 - realizadoTotal)}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="min-h-0 flex-1">
@@ -557,21 +584,23 @@ export function Section3Metas({ financial, dizimosOfertas, visaoConsolidada }: P
                 iconType="circle"
                 wrapperStyle={{ fontSize: 13, paddingBottom: 8 }}
               />
-              <Bar
-                dataKey="meta"
-                name="Meta"
-                fill={AZUL_META}
-                radius={[4, 4, 0, 0]}
-                barSize={38}
-                isAnimationActive={animarGraficos}
-              >
-                <LabelList
+              {comMeta && (
+                <Bar
                   dataKey="meta"
-                  position="top"
-                  formatter={(v: number) => fmtPct(v)}
-                  style={{ fontSize: 13, fill: "#E7ECF3", fontWeight: 600 }}
-                />
-              </Bar>
+                  name="Meta"
+                  fill={AZUL_META}
+                  radius={[4, 4, 0, 0]}
+                  barSize={38}
+                  isAnimationActive={animarGraficos}
+                >
+                  <LabelList
+                    dataKey="meta"
+                    position="top"
+                    formatter={(v: number) => fmtPct(v)}
+                    style={{ fontSize: 13, fill: "#E7ECF3", fontWeight: 600 }}
+                  />
+                </Bar>
+              )}
               <Bar
                 dataKey="realizado"
                 name="Realizado"

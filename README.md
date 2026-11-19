@@ -20,7 +20,7 @@ Roda num servidor da própria Central, na rede interna, acessível por VPN.
 | 1 — Total Geral         | KPIs do período, entradas x despesas, dízimos vs. meta, saldo por centro de resultado e dois donuts de distribuição |
 | 2 — Acumulado Diário    | Curva acumulada dia a dia contra a meta, comparação entre meses e a tabela do ano                                   |
 | 3 — Análise de Despesas | Naturezas de 3º e 4º nível e despesa mensal, com filtragem cruzada por clique                                       |
-| 4 — Controle de Metas   | Meta contra realizado por categoria, com naturezas agrupadas — só existe quando a carga tem metas nos lançamentos   |
+| 4 — Controle de Metas   | Meta contra realizado por categoria, com naturezas agrupadas, no Total Geral; nas outras visões, só o realizado ("Monitoramento de Despesas") — só existe quando a carga tem metas nos lançamentos |
 
 Os filtros do cabeçalho — Ano, Unidade, Mês, Natureza Nível 3, Projeto e Meta —
 são universais: valem para todas as seções ao mesmo tempo. Para um pastor, o

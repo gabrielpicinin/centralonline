@@ -123,3 +123,28 @@ const METAS_EM_DEBITO_2 = porBase((b) => DECLARACOES[b].consolidado.metasEmDebit
 export function metaUsaDebito2(meta: string, base: Base): boolean {
   return METAS_EM_DEBITO_2[base].has(norm(meta));
 }
+
+/* ============ 3. o título e a coluna de Meta do mesmo gráfico ============ */
+
+/**
+ * O que o gráfico da Seção 4 mostra em cada visão.
+ *
+ * Decisão da Central, 19/11: só o Total Geral — a visão consolidada — é o
+ * "Acompanhamento de Metas", com tudo o que é meta, exatamente como sempre foi:
+ * a coluna azul de Meta ao lado do Realizado, o resumo "Meta de economia /
+ * Realizado" no canto, e o traço da meta nas réguas do tooltip. Em qualquer
+ * outra visão — unidades filtradas, ou o pastor que vê só parte da base —, o
+ * gráfico se chama "Monitoramento de Despesas" e não tem meta nenhuma: só a
+ * coluna de Realizado.
+ *
+ * Fica aqui, junto da regra do "Débito 2", porque as duas respondem à mesma
+ * pergunta — é ou não é o Total Geral? — pelo mesmo `ehVisaoConsolidada`.
+ */
+export function graficoDeMetas(visaoConsolidada: boolean): {
+  titulo: string;
+  comMeta: boolean;
+} {
+  return visaoConsolidada
+    ? { titulo: "Acompanhamento de Metas", comMeta: true }
+    : { titulo: "Monitoramento de Despesas", comMeta: false };
+}
